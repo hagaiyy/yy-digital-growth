@@ -11,6 +11,8 @@ export interface ItemResult {
   status: ItemResultStatus;
   safeReasonCode?: string;
   safeMessage?: string;
+  successfulMetricNames?: string[];
+  failedMetricNames?: string[];
 }
 
 export interface ConnectionResult {

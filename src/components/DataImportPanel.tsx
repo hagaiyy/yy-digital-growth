@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { PlatformConnection } from "@/domain/models/PlatformConnection";
+import { isEligibleDataImportSource, type PlatformConnection } from "@/domain/models/PlatformConnection";
 import type { DataImportSettings } from "@/domain/models/DataImportSettings";
 import type { ImportRun } from "@/domain/models/ImportRun";
 import type { ImportedContent } from "@/domain/models/ImportedContent";
@@ -138,7 +138,7 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
     }
   }
 
-  const eligibleConnections = connections.filter((c) => c.status === "connected");
+  const eligibleConnections = connections.filter((c) => isEligibleDataImportSource(c));
 
   return (
     <div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import type { PlatformConnection } from "@/domain/models/PlatformConnection";
+import { isEligibleDataImportSource, type PlatformConnection } from "@/domain/models/PlatformConnection";
 import { CONNECTION_IDS } from "@/domain/connectionIds";
 import { DataImportPanel } from "@/components/DataImportPanel";
 import { getConnectionActionButtons } from "@/app/connectionActionButtons";
@@ -60,6 +60,7 @@ function formatTimestamp(value: string | undefined): string {
 
 function ConnectionCard({
   title,
+  subtitle,
   connection,
   busy,
   errorMessage,
@@ -73,6 +74,7 @@ function ConnectionCard({
   extra,
 }: {
   title: string;
+  subtitle?: string;
   connection: PlatformConnection | undefined;
   busy: boolean;
   errorMessage?: string;
@@ -106,7 +108,8 @@ function ConnectionCard({
         marginBottom: "1rem",
       }}
     >
-      <h3 style={{ marginTop: 0 }}>{title}</h3>
+      <h3 style={{ marginTop: 0, marginBottom: subtitle ? "0.15rem" : undefined }}>{title}</h3>
+      {subtitle && <p style={{ marginTop: 0, marginBottom: "0.75rem", color: "#9aa4b2" }}>{subtitle}</p>}
       <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.15rem 0.75rem", margin: 0 }}>
         <dt>Status</dt>
         <dd>{status}</dd>
@@ -287,7 +290,7 @@ export default function MainDashboardPage() {
     window.location.href = connectPath;
   }
 
-  const isDataImportEnabled = (connections ?? []).some((connection) => connection.status === "connected");
+  const isDataImportEnabled = (connections ?? []).some((connection) => isEligibleDataImportSource(connection));
   const findConnection = (connectionId: string) => connections?.find((c) => c.connectionId === connectionId);
 
   const instagram = findConnection(CONNECTION_IDS.instagram);
@@ -362,6 +365,7 @@ export default function MainDashboardPage() {
 
           <ConnectionCard
             title="Facebook Account"
+            subtitle="Authorization only — used to discover managed Pages. Meta does not provide personal-profile content or performance metrics through this connection, so it is not a Data Import source."
             connection={facebookAccount}
             busy={busyConnectionId === CONNECTION_IDS.facebookAccount}
             errorMessage={actionErrors[CONNECTION_IDS.facebookAccount]}

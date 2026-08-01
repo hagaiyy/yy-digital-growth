@@ -9,7 +9,7 @@ import {
 import type { ImportedContent } from "@/domain/models/ImportedContent";
 import type { PerformanceSnapshot } from "@/domain/models/PerformanceSnapshot";
 import type { ConnectionResult, ImportRun, ItemResultStatus } from "@/domain/models/ImportRun";
-import type { PlatformConnection } from "@/domain/models/PlatformConnection";
+import { isEligibleDataImportSource, type PlatformConnection } from "@/domain/models/PlatformConnection";
 
 import type { ImportedContentRepository } from "@/domain/repositories/ImportedContentRepository";
 import type { PerformanceSnapshotRepository } from "@/domain/repositories/PerformanceSnapshotRepository";
@@ -38,6 +38,8 @@ interface ItemOutcome {
   status: ItemResultStatus;
   safeReasonCode?: string;
   safeMessage?: string;
+  successfulMetricNames?: string[];
+  failedMetricNames?: string[];
   created: boolean;
   updated: boolean;
 }
@@ -95,6 +97,8 @@ function buildConnectionResult(connection: PlatformConnection, outcomes: ItemOut
       status: o.status,
       safeReasonCode: o.safeReasonCode,
       safeMessage: o.safeMessage,
+      successfulMetricNames: o.successfulMetricNames,
+      failedMetricNames: o.failedMetricNames,
     }));
 
   let status: ItemResultStatus;
@@ -276,6 +280,8 @@ export class DataImportService {
         status: partial ? "partial" : "success",
         safeReasonCode: partial ? "partialMetrics" : undefined,
         safeMessage: partial ? "Some metrics were not returned for this item." : undefined,
+        successfulMetricNames: metricsOutcome.successfulMetrics,
+        failedMetricNames: metricsOutcome.failedMetrics.map((f) => f.metric),
         created,
         updated: !created,
       };
@@ -298,6 +304,7 @@ export class DataImportService {
         status: "unsupported",
         safeReasonCode: "metricsUnsupported",
         safeMessage: metricsOutcome.safeMessage,
+        failedMetricNames: metricsOutcome.failedMetrics.map((f) => f.metric),
         created,
         updated: !created,
       };
@@ -340,7 +347,7 @@ export class DataImportService {
         this.instagramConnector.fetchContentMetrics(
           accessToken,
           item.externalContentId,
-          item.platformData.media_product_type as string | undefined,
+          item.contentType,
           {
             likeCount: item.platformData.like_count as number | undefined,
             commentsCount: item.platformData.comments_count as number | undefined,
@@ -350,22 +357,6 @@ export class DataImportService {
     );
 
     return buildConnectionResult(connection, outcomes);
-  }
-
-  private importFacebookAccount(connection: PlatformConnection): ConnectionResult {
-    const { safeMessage } = this.facebookConnector.fetchAccountContent();
-    return {
-      connectionId: connection.connectionId,
-      platform: "facebook",
-      status: "unsupported",
-      requestedCount: 0,
-      createdCount: 0,
-      updatedCount: 0,
-      failedCount: 0,
-      skippedCount: 0,
-      safeErrorCode: "unsupported",
-      safeErrorMessage: safeMessage,
-    };
   }
 
   private async importFacebookPage(
@@ -391,11 +382,7 @@ export class DataImportService {
 
     const outcomes = await mapWithConcurrency(items, ITEM_CONCURRENCY, (item) =>
       this.importOneItem(connection, item, () =>
-        this.facebookConnector.fetchPagePostMetrics(pageAccessToken, item.externalContentId, {
-          likesCount: item.platformData.likes_count as number | undefined,
-          commentsCount: item.platformData.comments_count as number | undefined,
-          sharesCount: item.platformData.shares_count as number | undefined,
-        }),
+        this.facebookConnector.fetchPagePostMetrics(pageAccessToken, item.externalContentId, item.contentType),
       ),
     );
 
@@ -428,14 +415,18 @@ export class DataImportService {
     return buildConnectionResult(connection, outcomes);
   }
 
+  // Facebook Account is never dispatched here — it is excluded upstream
+  // by isEligibleDataImportSource (see runImport's eligibleConnections
+  // filter). It is only an authorization identity used to discover
+  // managed Pages: a live capability test (GET /me/posts) proved it
+  // always returns zero posts without Advanced Access this app does not
+  // have, so it can never be a real content source and must not appear
+  // in connectionResults at all.
   private async importOneConnection(
     connection: PlatformConnection,
     limit: number,
   ): Promise<ConnectionResult> {
     if (connection.platform === "instagram") return this.importInstagram(connection, limit);
-    if (connection.platform === "facebook" && connection.connectionTarget === "account") {
-      return this.importFacebookAccount(connection);
-    }
     if (connection.platform === "facebook" && connection.connectionTarget === "page") {
       return this.importFacebookPage(connection, limit);
     }
@@ -488,8 +479,8 @@ export class DataImportService {
       }
     }
 
-    const eligibleConnections = (await this.connectionService.list()).filter(
-      (connection) => connection.status === "connected",
+    const eligibleConnections = (await this.connectionService.list()).filter((connection) =>
+      isEligibleDataImportSource(connection),
     );
 
     const connectionResults = await mapWithConcurrency(

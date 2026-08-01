@@ -1,7 +1,15 @@
-import type { MetricsFetchOutcome, PlatformConnector, RecentContentItem, VerifiedIdentity } from "./types";
-import { ConnectorError } from "./types";
+import type {
+  MetaSafeError,
+  MetricFailureReason,
+  MetricsFetchOutcome,
+  PlatformConnector,
+  RecentContentItem,
+  VerifiedIdentity,
+} from "./types";
+import { ConnectorError, extractMetaSafeError } from "./types";
 import { mapInstagramContentType } from "@/application/mapping/contentTypeMapping";
 import { isPlaceholderValue } from "@/config/localSetupVariables";
+import type { ContentType } from "@/domain/models/ImportedContent";
 
 // Instagram API with Instagram Login: the Instagram professional account
 // authorizes directly against Instagram's own OAuth endpoints using the
@@ -40,16 +48,88 @@ export interface InstagramTokenSet {
   expiresAt?: string;
 }
 
-function metricListFor(mediaProductType: string | undefined): string[] {
-  const type = mediaProductType?.toUpperCase();
-  if (type === "REELS") {
-    return ["plays", "reach", "saved", "shares", "total_interactions", "ig_reels_avg_watch_time"];
+// Built from a live production diagnostic against real content of each
+// type, not from documentation alone. `impressions` and `plays` were
+// confirmed rejected (IGApiException code=100, "invalid for this
+// content's type") for every real reel and feed item tested, and are
+// deliberately excluded rather than requested and discarded on every
+// import. `views` is the metric Meta's newer API versions use in their
+// place; requested speculatively since it degrades safely if wrong
+// (fetchContentMetrics tries the whole list together first, and only
+// bisects metric-by-metric if something in it is rejected — one bad
+// metric name can never erase the others). `likes`/`comments` are
+// deliberately not requested here — they are already available for free
+// from content discovery's like_count/comments_count fields.
+function metricCandidatesFor(contentType: ContentType): string[] {
+  switch (contentType) {
+    case "reel":
+      return [
+        "views",
+        "reach",
+        "saved",
+        "shares",
+        "total_interactions",
+        "ig_reels_avg_watch_time",
+        "ig_reels_video_view_total_time",
+      ];
+    case "video":
+    case "imagePost":
+    case "carousel":
+      return ["views", "reach", "saved", "shares", "total_interactions", "follows", "profile_activity"];
+    case "story":
+      // No live story was available to test against at the time this
+      // was written — these are Meta's documented story-insight metric
+      // names, and fetchContentMetrics verifies each one live rather
+      // than assuming support.
+      return ["reach", "exits", "replies", "taps_forward", "taps_back", "navigation"];
+    default:
+      return ["reach", "saved", "shares", "total_interactions"];
   }
-  if (type === "STORY") {
-    return ["impressions", "reach", "exits", "replies", "taps_forward", "taps_back"];
+}
+
+const METRIC_OUTPUT_NAMES: Record<string, string> = {
+  views: "views",
+  reach: "reach",
+  saved: "saves",
+  shares: "shares",
+  total_interactions: "engagements",
+  ig_reels_avg_watch_time: "averageWatchTimeMs",
+  ig_reels_video_view_total_time: "totalWatchTimeMs",
+  follows: "follows",
+  profile_activity: "profileActivity",
+  exits: "exits",
+  replies: "replies",
+  taps_forward: "tapsForward",
+  taps_back: "tapsBack",
+  navigation: "navigation",
+};
+
+function outputNameFor(metric: string): string {
+  return METRIC_OUTPUT_NAMES[metric] ?? metric;
+}
+
+function normalizeMetricValue(metric: string, value: number): number {
+  // Meta reports watch-time metrics in seconds; stored in milliseconds
+  // for consistency with how durations are represented elsewhere.
+  if (metric === "ig_reels_avg_watch_time" || metric === "ig_reels_video_view_total_time") {
+    return Math.round(value * 1000);
   }
-  // FEED (image/carousel) and anything else recognized as a still post.
-  return ["impressions", "reach", "saved"];
+  return value;
+}
+
+// Classification is based on what was actually observed live: every
+// rejection Instagram returned for these candidate metrics was
+// IGApiException code=100, and in every case the cause was confirmed to
+// be that the metric does not apply to that specific content's type
+// (e.g. "views" on very old media, reel-only metrics on a feed post) —
+// never a missing permission. code=10 / 190 are kept distinct in case
+// account or token state changes in the future.
+function classifyInstagramMetricFailure(error: MetaSafeError | null): MetricFailureReason {
+  if (!error) return "providerError";
+  if (error.code === 190) return "tokenInvalid";
+  if (error.code === 10) return "permissionMissing";
+  if (error.code === 100) return "invalidMetricForContentType";
+  return "requestRejected";
 }
 
 function getConfig() {
@@ -86,6 +166,45 @@ async function parseJsonOrThrow<T>(response: Response, safeMessage: string): Pro
   } catch {
     throw new ConnectorError("failed", "Instagram returned an unexpected response.");
   }
+}
+
+// One request for a set of metric names against a single media node's
+// /insights edge — returns either the raw name->value map Meta
+// returned, or (for a non-ok response) its safe error fields. Module-
+// scoped rather than a private class method: a `private` method would
+// make InstagramConnector nominally typed, which breaks structural
+// compatibility with the fake connector used in tests (the same reason
+// PinterestConnector's requestToken helper is module-scoped).
+async function requestInsights(
+  externalContentId: string,
+  accessToken: string,
+  metricNames: string[],
+): Promise<{ ok: true; values: Map<string, number> } | { ok: false; error: MetaSafeError | null }> {
+  const url = new URL(`${GRAPH_API_BASE}/${externalContentId}/insights`);
+  url.searchParams.set("metric", metricNames.join(","));
+  url.searchParams.set("access_token", accessToken);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "GET" });
+  } catch {
+    return { ok: false, error: null };
+  }
+  if (!response.ok) {
+    return { ok: false, error: await extractMetaSafeError(response) };
+  }
+  let body: { data?: Array<{ name: string; values?: Array<{ value?: number }> }> };
+  try {
+    body = (await response.json()) as typeof body;
+  } catch {
+    return { ok: false, error: null };
+  }
+  const values = new Map<string, number>();
+  for (const entry of body.data ?? []) {
+    const value = entry.values?.[0]?.value;
+    if (typeof value === "number") values.set(entry.name, value);
+  }
+  return { ok: true, values };
 }
 
 export class InstagramConnector implements PlatformConnector {
@@ -281,66 +400,76 @@ export class InstagramConnector implements PlatformConnector {
     }));
   }
 
+  // Per-metric outcomes, never all-or-nothing: the full candidate list
+  // for this content type is requested together first (one request, the
+  // common case whenever every candidate genuinely applies); only if
+  // that combined request is rejected does this fall back to requesting
+  // each metric individually, so a single invalid-for-this-type or
+  // otherwise rejected metric can never erase the others.
   async fetchContentMetrics(
     accessToken: string,
     externalContentId: string,
-    mediaProductType: string | undefined,
+    contentType: ContentType,
     knownEngagement: { likeCount?: number; commentsCount?: number },
   ): Promise<MetricsFetchOutcome> {
-    const requestedMetrics = metricListFor(mediaProductType);
-    const url = new URL(`${GRAPH_API_BASE}/${externalContentId}/insights`);
-    url.searchParams.set("metric", requestedMetrics.join(","));
-    url.searchParams.set("access_token", accessToken);
+    const metrics: Record<string, number | string | null> = {};
+    const successfulMetrics: string[] = [];
+    const failedMetrics: { metric: string; reason: MetricFailureReason }[] = [];
 
-    let response: Response;
-    try {
-      response = await fetch(url, { method: "GET" });
-    } catch {
-      return { kind: "failed", safeMessage: "Instagram could not be reached to retrieve metrics." };
+    // Already known for free from content discovery — never re-requested.
+    if (typeof knownEngagement.likeCount === "number") {
+      metrics.likes = knownEngagement.likeCount;
+      successfulMetrics.push("likes");
+    }
+    if (typeof knownEngagement.commentsCount === "number") {
+      metrics.comments = knownEngagement.commentsCount;
+      successfulMetrics.push("comments");
     }
 
-    if (!response.ok) {
-      // Instagram returns an error for media types/ages that do not
-      // support insights (e.g. very old media) — treated as unsupported
-      // rather than failed, since retrying will not help.
+    const candidates = metricCandidatesFor(contentType);
+    const combined = await requestInsights(externalContentId, accessToken, candidates);
+
+    if (combined.ok) {
+      for (const metric of candidates) {
+        const value = combined.values.get(metric);
+        if (typeof value === "number") {
+          successfulMetrics.push(metric);
+          metrics[outputNameFor(metric)] = normalizeMetricValue(metric, value);
+        } else {
+          failedMetrics.push({ metric, reason: "metricUnsupported" });
+        }
+      }
+    } else {
+      for (const metric of candidates) {
+        const single = await requestInsights(externalContentId, accessToken, [metric]);
+        if (!single.ok) {
+          failedMetrics.push({ metric, reason: classifyInstagramMetricFailure(single.error) });
+          continue;
+        }
+        const value = single.values.get(metric);
+        if (typeof value !== "number") {
+          failedMetrics.push({ metric, reason: "metricUnsupported" });
+          continue;
+        }
+        successfulMetrics.push(metric);
+        metrics[outputNameFor(metric)] = normalizeMetricValue(metric, value);
+      }
+    }
+
+    if (successfulMetrics.length === 0) {
       return {
         kind: "unsupported",
+        failedMetrics,
         safeMessage: "Instagram does not provide performance metrics for this content.",
       };
     }
 
-    let body: { data?: Array<{ name: string; values?: Array<{ value: number }> }> };
-    try {
-      body = (await response.json()) as typeof body;
-    } catch {
-      return { kind: "failed", safeMessage: "Instagram returned an unexpected metrics response." };
-    }
-
-    const raw = new Map<string, number>();
-    for (const entry of body.data ?? []) {
-      const value = entry.values?.[0]?.value;
-      if (typeof value === "number") raw.set(entry.name, value);
-    }
-
-    const metrics: Record<string, number | string | null> = {
-      likes: knownEngagement.likeCount ?? null,
-      comments: knownEngagement.commentsCount ?? null,
+    return {
+      kind: "success",
+      metrics,
+      successfulMetrics,
+      failedMetrics,
+      dataCompleteness: failedMetrics.length === 0 ? "complete" : "partial",
     };
-    if (raw.has("plays")) metrics.views = raw.get("plays")!;
-    if (raw.has("impressions")) metrics.impressions = raw.get("impressions")!;
-    if (raw.has("reach")) metrics.reach = raw.get("reach")!;
-    if (raw.has("saved")) metrics.saves = raw.get("saved")!;
-    if (raw.has("shares")) metrics.shares = raw.get("shares")!;
-    if (raw.has("total_interactions")) metrics.engagements = raw.get("total_interactions")!;
-    if (raw.has("ig_reels_avg_watch_time")) {
-      metrics.averageWatchTimeMs = Math.round(raw.get("ig_reels_avg_watch_time")! * 1000);
-    }
-    if (raw.has("exits")) metrics.exits = raw.get("exits")!;
-    if (raw.has("replies")) metrics.replies = raw.get("replies")!;
-    if (raw.has("taps_forward")) metrics.tapsForward = raw.get("taps_forward")!;
-    if (raw.has("taps_back")) metrics.tapsBack = raw.get("taps_back")!;
-
-    const dataCompleteness = raw.size >= requestedMetrics.length ? "complete" : "partial";
-    return { kind: "success", metrics, dataCompleteness };
   }
 }

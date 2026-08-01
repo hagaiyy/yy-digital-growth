@@ -45,11 +45,70 @@ export interface RecentContentItem {
   platformData: Record<string, unknown>;
 }
 
+// Distinct, safe reasons a single metric request can fail — a closed
+// classification derived only from the provider's own safe type/code/
+// subcode fields, never from a raw free-text error message (which can
+// vary and is not something we control or want to expose).
+export type MetricFailureReason =
+  | "metricUnsupported"
+  | "permissionMissing"
+  | "invalidMetricForContentType"
+  | "requestRejected"
+  | "tokenInvalid"
+  | "providerError";
+
+export interface MetricFailure {
+  metric: string;
+  reason: MetricFailureReason;
+}
+
+// Meta's own structured error fields — documented for developer support,
+// never containing a token, secret, or the free-text message that could
+// echo back request details.
+export interface MetaSafeError {
+  type: string | null;
+  code: number | null;
+  subcode: number | null;
+}
+
+export async function extractMetaSafeError(response: Response): Promise<MetaSafeError | null> {
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { type?: string; code?: number; error_subcode?: number };
+    };
+    if (!body.error) return null;
+    return {
+      type: body.error.type ?? null,
+      code: body.error.code ?? null,
+      subcode: body.error.error_subcode ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// A metrics request is always per-metric now — one rejected metric can
+// never erase the others fetched alongside it (see MetricFailure above).
 export type MetricsFetchOutcome =
   | {
+      // At least one requested metric returned a real value.
       kind: "success";
       metrics: Record<string, number | string | null>;
+      successfulMetrics: string[];
+      failedMetrics: MetricFailure[];
       dataCompleteness: "complete" | "partial";
     }
-  | { kind: "unsupported"; safeMessage: string }
-  | { kind: "failed"; safeMessage: string };
+  | {
+      // Every requested metric was rejected or does not apply — the
+      // content itself is still valid and already saved by the caller.
+      kind: "unsupported";
+      failedMetrics: MetricFailure[];
+      safeMessage: string;
+    }
+  | {
+      // The metrics attempt itself could not be made at all (e.g. an
+      // invalid/expired token, or the network being unreachable) — no
+      // individual metric was ever actually requested.
+      kind: "failed";
+      safeMessage: string;
+    };

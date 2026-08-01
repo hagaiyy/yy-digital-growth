@@ -18,7 +18,9 @@
           "enum": ["success", "partial", "failed", "skipped", "unsupported"]
         },
         "safeReasonCode": { "type": "string", "minLength": 1 },
-        "safeMessage": { "type": "string", "minLength": 1 }
+        "safeMessage": { "type": "string", "minLength": 1 },
+        "successfulMetricNames": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "failedMetricNames": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
     },
     "connectionResult": {

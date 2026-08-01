@@ -7,12 +7,15 @@ import {
   type RecentContentItem,
   type VerifiedIdentity,
 } from "@/application/connectors/types";
+import type { ContentType } from "@/domain/models/ImportedContent";
 
 export { ConnectorError };
 
 const DEFAULT_METRICS_OUTCOME: MetricsFetchOutcome = {
   kind: "success",
   metrics: { likes: 10, comments: 2, impressions: 100 },
+  successfulMetrics: ["likes", "comments", "impressions"],
+  failedMetrics: [],
   dataCompleteness: "complete",
 };
 
@@ -96,7 +99,7 @@ export class FakeInstagramConnector {
   async fetchContentMetrics(
     _accessToken: string,
     externalContentId: string,
-    _mediaProductType: string | undefined,
+    _contentType: ContentType,
     _knownEngagement: { likeCount?: number; commentsCount?: number },
   ): Promise<MetricsFetchOutcome> {
     return this.metricsOutcomeFor(externalContentId);
@@ -126,7 +129,6 @@ export class FakeFacebookConnector {
   };
   fetchIdentityCallCount = 0;
 
-  accountContentSafeMessage = "Facebook does not provide personal-profile content or analytics.";
   pageContent: RecentContentItem[] | ConnectorError = [
     {
       externalContentId: "fb-post-1",
@@ -173,10 +175,6 @@ export class FakeFacebookConnector {
     return this.pageVerifyResult;
   }
 
-  fetchAccountContent(): { items: RecentContentItem[]; safeMessage: string } {
-    return { items: [], safeMessage: this.accountContentSafeMessage };
-  }
-
   async fetchPageContent(
     _pageAccessToken: string,
     _pageId: string,
@@ -190,7 +188,7 @@ export class FakeFacebookConnector {
   async fetchPagePostMetrics(
     _pageAccessToken: string,
     postId: string,
-    _knownEngagement: { likesCount?: number; commentsCount?: number; sharesCount?: number },
+    _contentType: ContentType,
   ): Promise<MetricsFetchOutcome> {
     return this.pageMetricsOutcomeFor(postId);
   }

@@ -223,6 +223,8 @@ test("missing metrics never become zero, and null stays distinct from zero", asy
     env.instagramConnector.metricsOutcomeFor = () => ({
       kind: "success",
       metrics: { likes: 0, comments: null },
+      successfulMetrics: ["likes", "comments"],
+      failedMetrics: [{ metric: "shares", reason: "metricUnsupported" }],
       dataCompleteness: "partial",
     });
 
@@ -245,6 +247,8 @@ test("partial metrics are persisted with dataCompleteness partial", async () => 
     env.instagramConnector.metricsOutcomeFor = () => ({
       kind: "success",
       metrics: { impressions: 500 },
+      successfulMetrics: ["impressions"],
+      failedMetrics: [{ metric: "reach", reason: "metricUnsupported" }],
       dataCompleteness: "partial",
     });
 
@@ -281,7 +285,13 @@ test("one failing item does not stop the remaining items in the same connection"
     env.instagramConnector.metricsOutcomeFor = (id) =>
       id === "ig-fails"
         ? { kind: "failed", safeMessage: "Simulated metrics failure." }
-        : { kind: "success", metrics: { likes: 5 }, dataCompleteness: "complete" };
+        : {
+            kind: "success",
+            metrics: { likes: 5 },
+            successfulMetrics: ["likes"],
+            failedMetrics: [],
+            dataCompleteness: "complete",
+          };
 
     const run = await env.dataImportService.runImport();
     const igResult = run.connectionResults.find((r) => r.connectionId === CONNECTION_IDS.instagram)!;
@@ -313,31 +323,33 @@ test("one platform's connection failure does not stop other platforms from impor
   });
 });
 
-// Scenario 25: unsupported Facebook profile analytics reported, run not marked failed.
-test("Facebook Account is reported unsupported without failing the whole run", async () => {
+// Scenario 25 (revised): Facebook Account is an authorization-only
+// connection — a live capability test (GET /me/posts) proved it can
+// never return content without Advanced Access this app does not have,
+// so it must be excluded from Data Import entirely rather than appearing
+// as an "unsupported" connectionResult on every run.
+test("Facebook Account is excluded from connectionResults and does not affect run status", async () => {
   await withEncryptionKey(async () => {
     const env = buildEnvironment();
     await seedAllConnected(env);
 
     const run = await env.dataImportService.runImport();
-    const fbAccountResult = run.connectionResults.find((r) => r.connectionId === CONNECTION_IDS.facebookAccount)!;
+    const fbAccountResult = run.connectionResults.find((r) => r.connectionId === CONNECTION_IDS.facebookAccount);
 
-    assert.equal(fbAccountResult.status, "unsupported");
-    assert.ok(fbAccountResult.safeErrorMessage);
+    assert.equal(fbAccountResult, undefined, "Facebook Account must not appear in connectionResults at all");
+    assert.equal(run.totals.connections, 3, "only instagram, facebookPage, and pinterest are eligible sources");
     assert.notEqual(run.status, "failed");
-    // Other connections still succeeded, so the run is completedWithErrors, not fully clean.
-    assert.equal(run.status, "completedWithErrors");
   });
 });
 
 // Scenario 16: importRun stores aggregate counts.
-test("importRun totals aggregate across all connections", async () => {
+test("importRun totals aggregate across all eligible connections", async () => {
   await withEncryptionKey(async () => {
     const env = buildEnvironment();
     await seedAllConnected(env);
 
     const run = await env.dataImportService.runImport();
-    assert.equal(run.totals.connections, 4);
+    assert.equal(run.totals.connections, 3);
     assert.ok(run.totals.createdItems > 0);
   });
 });
@@ -349,6 +361,7 @@ test("importRun connectionResults list exact non-success items for debugging", a
     await seedAllConnected(env);
     env.pinterestConnector.pinAnalyticsOutcomeFor = () => ({
       kind: "unsupported",
+      failedMetrics: [],
       safeMessage: "Pinterest analytics are not available for this account.",
     });
 

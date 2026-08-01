@@ -251,6 +251,7 @@ export class PinterestConnector implements PlatformConnector {
     if (response.status === 403 || response.status === 401) {
       return {
         kind: "unsupported",
+        failedMetrics: [],
         safeMessage: "Pinterest analytics are not available for this account.",
       };
     }
@@ -275,11 +276,22 @@ export class PinterestConnector implements PlatformConnector {
     if ("PIN_CLICK" in summary) metrics.pinClicks = summary.PIN_CLICK!;
     if ("OUTBOUND_CLICK" in summary) metrics.outboundClicks = summary.OUTBOUND_CLICK!;
 
-    const foundCount = Object.keys(summary).filter((key) => requested.includes(key)).length;
-    if (foundCount === 0) {
-      return { kind: "unsupported", safeMessage: "Pinterest did not return any analytics for this Pin." };
+    const foundKeys = requested.filter((key) => key in summary);
+    const missingKeys = requested.filter((key) => !(key in summary));
+    if (foundKeys.length === 0) {
+      return {
+        kind: "unsupported",
+        failedMetrics: missingKeys.map((metric) => ({ metric, reason: "metricUnsupported" as const })),
+        safeMessage: "Pinterest did not return any analytics for this Pin.",
+      };
     }
-    const dataCompleteness = foundCount >= requested.length ? "complete" : "partial";
-    return { kind: "success", metrics, dataCompleteness };
+    const dataCompleteness = foundKeys.length >= requested.length ? "complete" : "partial";
+    return {
+      kind: "success",
+      metrics,
+      successfulMetrics: foundKeys,
+      failedMetrics: missingKeys.map((metric) => ({ metric, reason: "metricUnsupported" as const })),
+      dataCompleteness,
+    };
   }
 }

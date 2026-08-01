@@ -1,9 +1,10 @@
 import { CONNECTION_IDS } from "@/domain/connectionIds";
-import type {
-  ConnectionStatus,
-  ConnectionTarget,
-  Platform,
-  PlatformConnection,
+import {
+  isEligibleDataImportSource,
+  type ConnectionStatus,
+  type ConnectionTarget,
+  type Platform,
+  type PlatformConnection,
 } from "@/domain/models/PlatformConnection";
 import type { PlatformConnectionRepository } from "@/domain/repositories/PlatformConnectionRepository";
 import type { PlatformCredentialRepository } from "@/domain/repositories/PlatformCredentialRepository";
@@ -225,7 +226,7 @@ export class ConnectionService {
 
   async isDataImportEnabled(): Promise<boolean> {
     const connections = await this.list();
-    return connections.some((connection) => connection.status === "connected");
+    return connections.some((connection) => isEligibleDataImportSource(connection));
   }
 
   private async persistStatus(
