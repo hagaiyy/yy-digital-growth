@@ -2,6 +2,7 @@ import type {
   MetaSafeError,
   MetricFailure,
   MetricFailureReason,
+  MetricRecord,
   MetricsFetchOutcome,
   PlatformConnector,
   RecentContentItem,
@@ -11,6 +12,13 @@ import { ConnectorError, extractMetaSafeError } from "./types";
 import { mapFacebookContentType } from "@/application/mapping/contentTypeMapping";
 import { isPlaceholderValue } from "@/config/localSetupVariables";
 import type { ContentType } from "@/domain/models/ImportedContent";
+import type { DataCompleteness, MetricRecordStatus } from "@/domain/models/PerformanceSnapshot";
+import type { AccountMetricRecord } from "@/domain/models/AccountPerformanceSnapshot";
+import {
+  planFacebookPageInsightsRequest,
+  planFacebookPostInsightsRequest,
+  type PlannedMetric,
+} from "./facebook/insightsRequestPlanner";
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
@@ -28,7 +36,10 @@ const OAUTH_SCOPE = "public_profile,pages_show_list,pages_read_engagement,read_i
 // fields (likes/comments summary, shares) are proven to require a
 // permission this app's Page token does not have (live-tested: rejected
 // everywhere with OAuthException code=10) and are fetched independently,
-// per post, in fetchPagePostMetrics instead.
+// per post, in fetchPagePostMetrics instead. `type`/`status_type` are
+// legacy fields Meta still returns on Page posts and are the only
+// documented signal for a post with no attachment at all (a plain text
+// status update).
 interface FacebookPostNode {
   id: string;
   message?: string;
@@ -36,6 +47,8 @@ interface FacebookPostNode {
   permalink_url?: string;
   full_picture?: string;
   attachments?: { data?: Array<{ type?: string; media_type?: string }> };
+  status_type?: string;
+  type?: string;
 }
 
 export interface FacebookManagedPage {
@@ -43,6 +56,23 @@ export interface FacebookManagedPage {
   name: string;
   category?: string;
   accessToken: string;
+}
+
+// Only safe validity/permission facts — never a token, secret, or the
+// raw debug_token response body.
+export interface FacebookTokenVerificationResult {
+  userToken: {
+    valid: boolean;
+    belongsToApp: boolean;
+    hasReadInsights: boolean;
+    hasPagesReadEngagement: boolean;
+  };
+  pageToken: {
+    valid: boolean;
+    belongsToApp: boolean;
+    belongsToExpectedPage: boolean;
+  };
+  pageIdMatches: boolean;
 }
 
 function getConfig() {
@@ -177,28 +207,150 @@ async function requestFacebookInsights(
   }
 }
 
-// Base metrics are attempted for every Page post; video-specific metrics
-// are only attempted for content our own mapper classified as video —
-// never sent to image/unknown posts, per the "explicit metric map by
-// content type" requirement.
-const BASE_INSIGHTS_METRICS = ["post_impressions", "post_impressions_unique", "post_engaged_users", "post_clicks"];
-const VIDEO_INSIGHTS_METRICS = ["post_video_views", "post_video_views_unique", "post_video_avg_time_watched"];
+async function requestFacebookPageInsights(
+  pageId: string,
+  pageAccessToken: string,
+  metricNames: string[],
+  period: string,
+): Promise<{ ok: true; values: Map<string, number> } | { ok: false; error: MetaSafeError | null }> {
+  const url = new URL(`${GRAPH_API_BASE}/${pageId}/insights`);
+  url.searchParams.set("metric", metricNames.join(","));
+  url.searchParams.set("period", period);
+  url.searchParams.set("access_token", pageAccessToken);
 
-const INSIGHTS_METRIC_OUTPUT_NAMES: Record<string, string> = {
-  post_impressions: "impressions",
-  post_impressions_unique: "reach",
-  post_engaged_users: "engagedUsers",
-  post_clicks: "clicks",
-  post_video_views: "videoViews",
-  post_video_views_unique: "videoViewsUnique",
-  post_video_avg_time_watched: "averageWatchTimeMs",
-};
-
-function insightsMetricCandidatesFor(contentType: ContentType): string[] {
-  if (contentType === "video" || contentType === "reel") {
-    return [...BASE_INSIGHTS_METRICS, ...VIDEO_INSIGHTS_METRICS];
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "GET" });
+  } catch {
+    return { ok: false, error: null };
   }
-  return BASE_INSIGHTS_METRICS;
+  if (!response.ok) {
+    return { ok: false, error: await extractMetaSafeError(response) };
+  }
+  try {
+    const body = (await response.json()) as { data?: Array<{ name: string; values?: Array<{ value: number }> }> };
+    const values = new Map<string, number>();
+    for (const entry of body.data ?? []) {
+      const value = entry.values?.[0]?.value;
+      if (typeof value === "number") values.set(entry.name, value);
+    }
+    return { ok: true, values };
+  } catch {
+    return { ok: false, error: null };
+  }
+}
+
+// Extracts only safe, structured facts from Meta's /debug_token
+// response — is_valid, which app it belongs to, and the granted
+// permission names (both the flat `scopes` array and each
+// `granular_scopes[].scope`, since a permission consented to under
+// Meta's granular-permissions flow can appear only in the latter). The
+// raw response body is discarded once these are read; a token-debug
+// response is never itself returned or logged, per this app's rule
+// that a permission appearing here is not proof a metric will actually
+// work — only a real production response proves that.
+interface DebugTokenSafeResult {
+  isValid: boolean;
+  belongsToApp: boolean;
+  scopes: string[];
+}
+
+async function debugToken(
+  inputToken: string,
+  appId: string,
+  appSecret: string,
+): Promise<DebugTokenSafeResult | null> {
+  const url = new URL(`${GRAPH_API_BASE}/debug_token`);
+  url.searchParams.set("input_token", inputToken);
+  url.searchParams.set("access_token", `${appId}|${appSecret}`);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "GET" });
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
+  try {
+    const body = (await response.json()) as {
+      data?: {
+        app_id?: string;
+        is_valid?: boolean;
+        scopes?: string[];
+        granular_scopes?: Array<{ scope?: string }>;
+      };
+    };
+    const data = body.data;
+    if (!data) return null;
+    const scopeSet = new Set<string>(data.scopes ?? []);
+    for (const granular of data.granular_scopes ?? []) {
+      if (granular.scope) scopeSet.add(granular.scope);
+    }
+    return {
+      isValid: data.is_valid === true,
+      belongsToApp: data.app_id === appId,
+      scopes: Array.from(scopeSet),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// MetricFailureReason (used by the DataImportService-facing
+// MetricsFetchOutcome) and MetricRecordStatus (used by the structured,
+// persisted MetricRecord/AccountMetricRecord) are two different closed
+// vocabularies for the same underlying facts — this is the one place
+// they're reconciled, mirroring InstagramConnector's own
+// toMetricRecordStatus/toMetricFailureReason pair.
+function toMetricRecordStatus(reason: MetricFailureReason): MetricRecordStatus {
+  switch (reason) {
+    case "metricUnsupported":
+      return "empty";
+    case "permissionMissing":
+      return "permissionRequired";
+    case "invalidMetricForContentType":
+      return "invalidForContentType";
+    case "tokenInvalid":
+    case "providerError":
+      return "providerError";
+    case "requestRejected":
+      return "unsupported";
+  }
+}
+
+function toMetricFailureReason(status: MetricRecordStatus): MetricFailureReason {
+  switch (status) {
+    case "permissionRequired":
+      return "permissionMissing";
+    case "invalidForContentType":
+      return "invalidMetricForContentType";
+    case "deprecated":
+    case "unsupported":
+    case "accessReviewRequired":
+      return "requestRejected";
+    case "empty":
+    case "untested":
+      return "metricUnsupported";
+    case "providerError":
+    default:
+      return "providerError";
+  }
+}
+
+// Extracts the value for one object-field engagement counter from the
+// raw GET /{post-id}?fields=... response. Kept as one small dispatch
+// table rather than several near-identical inline closures.
+function extractObjectFieldValue(providerMetric: string, body: Record<string, unknown>): number | undefined {
+  if (providerMetric === "likes.summary(true)") {
+    return (body.likes as { summary?: { total_count?: number } } | undefined)?.summary?.total_count;
+  }
+  if (providerMetric === "comments.summary(true)") {
+    return (body.comments as { summary?: { total_count?: number } } | undefined)?.summary?.total_count;
+  }
+  if (providerMetric === "shares") {
+    return (body.shares as { count?: number } | undefined)?.count;
+  }
+  return undefined;
 }
 
 export class FacebookConnector implements PlatformConnector {
@@ -334,23 +486,69 @@ export class FacebookConnector implements PlatformConnector {
     };
   }
 
+  // Server-side proof of real token/permission state — never inferred
+  // from what was requested at authorization time, and never treated as
+  // proof that a specific metric will work (only a real production
+  // response proves that; see fetchPagePostMetrics/fetchPageInsights).
+  // "Belongs to expected Page" is proven by actually calling GET
+  // /{expectedPageId} with the Page token: a Page-scoped token can only
+  // read its own Page, so this fails for any token/Page mismatch.
+  async verifyTokenState(
+    userAccessToken: string,
+    pageAccessToken: string,
+    expectedPageId: string,
+  ): Promise<FacebookTokenVerificationResult> {
+    const config = getConfig();
+    if (!config) {
+      throw new ConnectorError(
+        "setupRequired",
+        `Facebook is not configured. Missing environment variable(s): ${missingFacebookConfigVars().join(", ")}.`,
+      );
+    }
+
+    const [userDebug, pageDebug, pageIdentity] = await Promise.all([
+      debugToken(userAccessToken, config.appId, config.appSecret),
+      debugToken(pageAccessToken, config.appId, config.appSecret),
+      this.verifyPageStillManaged(expectedPageId, pageAccessToken).catch(() => null),
+    ]);
+
+    const pageBelongsToExpectedPage = pageIdentity !== null && pageIdentity.externalAccountId === expectedPageId;
+
+    return {
+      userToken: {
+        valid: userDebug?.isValid ?? false,
+        belongsToApp: userDebug?.belongsToApp ?? false,
+        hasReadInsights: userDebug?.scopes.includes("read_insights") ?? false,
+        hasPagesReadEngagement: userDebug?.scopes.includes("pages_read_engagement") ?? false,
+      },
+      pageToken: {
+        valid: pageDebug?.isValid ?? false,
+        belongsToApp: pageDebug?.belongsToApp ?? false,
+        belongsToExpectedPage: pageBelongsToExpectedPage,
+      },
+      pageIdMatches: pageBelongsToExpectedPage,
+    };
+  }
+
   async fetchPageContent(
     pageAccessToken: string,
     pageId: string,
     limit: number,
   ): Promise<RecentContentItem[]> {
     const url = new URL(`${GRAPH_API_BASE}/${pageId}/posts`);
-    // Stage A — content discovery only. Fields proven safe by live
-    // isolation testing (facebookPageFields diagnostic): id, created_time,
-    // message, permalink_url, attachments{type,media_type}, full_picture
-    // are all either supported or merely empty, never rejected. Engagement
-    // summary fields (likes/comments) are proven to be rejected with
-    // OAuthException code=10 for this app's Page token and are
-    // deliberately excluded here so they can never block post identity
-    // import — they are fetched independently in fetchPagePostMetrics.
+    // Stage A — content discovery only, safe metadata never gated behind
+    // an engagement-summary permission. id, created_time, message,
+    // permalink_url, attachments{type,media_type}, full_picture are
+    // proven safe by live isolation testing (facebookPageFields
+    // diagnostic): all either supported or merely empty, never rejected.
+    // status_type/type are added for classification only (see
+    // mapFacebookContentType). likes.summary/comments.summary are
+    // deliberately never requested here — they are proven to require a
+    // permission this app's Page token does not always have and are
+    // fetched independently, per post, in fetchPagePostMetrics instead.
     url.searchParams.set(
       "fields",
-      "id,created_time,message,permalink_url,attachments{type,media_type},full_picture",
+      "id,created_time,message,permalink_url,attachments{type,media_type},full_picture,status_type,type",
     );
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("access_token", pageAccessToken);
@@ -370,7 +568,7 @@ export class FacebookConnector implements PlatformConnector {
       const attachment = node.attachments?.data?.[0];
       return {
         externalContentId: node.id,
-        contentType: mapFacebookContentType(false, attachment?.media_type ?? attachment?.type),
+        contentType: mapFacebookContentType(attachment?.type, attachment?.media_type, node.type, node.status_type),
         caption: node.message ?? null,
         permalink: node.permalink_url ?? null,
         thumbnailUrl: node.full_picture ?? null,
@@ -378,6 +576,8 @@ export class FacebookConnector implements PlatformConnector {
         platformData: {
           attachment_type: attachment?.type,
           attachment_media_type: attachment?.media_type,
+          provider_type: node.type,
+          provider_status_type: node.status_type,
         },
       };
     });
@@ -385,94 +585,121 @@ export class FacebookConnector implements PlatformConnector {
 
   // Stage B — per-post metrics, fetched independently of Stage A so one
   // gated or unavailable metric never blocks the content already saved.
-  // Engagement counters (likes/comments/shares) live on the post object
-  // itself and are requested one field at a time; impressions/reach/
-  // engagement/clicks (and, for video content, view/watch-time metrics)
-  // come from /insights and are requested combined-first, then bisected
+  // Every metric requested is decided by planFacebookPostInsightsRequest
+  // against the metric capability registry — never one universal list
+  // applied to every content type. Engagement counters (likes/comments/
+  // shares) live on the post object itself and are always requested one
+  // field at a time (proven necessary: a rejected field must never take
+  // another down with it); distribution/performance/video metrics come
+  // from /insights and are requested combined-first, then bisected
   // metric-by-metric only if the combined request is rejected.
   async fetchPagePostMetrics(
     pageAccessToken: string,
     postId: string,
     contentType: ContentType,
+    providerObjectType?: string,
   ): Promise<MetricsFetchOutcome> {
+    const plan = planFacebookPostInsightsRequest({ contentType, grantedPermissions: OAUTH_SCOPE.split(",") });
+
     const metrics: Record<string, number | string | null> = {};
     const successfulMetrics: string[] = [];
     const failedMetrics: MetricFailure[] = [];
+    const metricRecords: MetricRecord[] = [];
+    let attemptedCount = 0;
+    let attemptedFailureCount = 0;
 
-    const objectFieldTargets: Array<{
-      metric: string;
-      field: string;
-      extract: (body: Record<string, unknown>) => number | undefined;
-    }> = [
-      {
-        metric: "likes",
-        field: "likes.summary(true)",
-        extract: (body) => (body.likes as { summary?: { total_count?: number } } | undefined)?.summary?.total_count,
-      },
-      {
-        metric: "comments",
-        field: "comments.summary(true)",
-        extract: (body) =>
-          (body.comments as { summary?: { total_count?: number } } | undefined)?.summary?.total_count,
-      },
-      {
-        metric: "shares",
-        field: "shares",
-        extract: (body) => (body.shares as { count?: number } | undefined)?.count,
-      },
-    ];
-
-    for (const target of objectFieldTargets) {
-      const result = await requestFacebookField(postId, pageAccessToken, target.field);
-      if (!result.ok) {
-        failedMetrics.push({ metric: target.metric, reason: classifyFacebookMetricFailure(result.error) });
-        continue;
-      }
-      const value = target.extract(result.body);
+    const record = (planned: PlannedMetric, value: number | undefined, error: MetaSafeError | null | undefined) => {
+      attemptedCount += 1;
       if (typeof value === "number") {
-        metrics[target.metric] = value;
-        successfulMetrics.push(target.metric);
-      } else {
-        // No error, but the field carried no value for this post — Meta
-        // omits some zero-count fields rather than returning a literal
-        // zero, and we must never fabricate a value we did not receive.
-        failedMetrics.push({ metric: target.metric, reason: "metricUnsupported" });
+        successfulMetrics.push(planned.internalMetric);
+        metrics[planned.internalMetric] = value;
+        metricRecords.push({
+          providerMetric: planned.providerMetric,
+          internalMetric: planned.internalMetric,
+          value,
+          nativeUnit: planned.nativeUnit,
+          status: "available",
+          period: planned.period,
+          sourceEndpoint: planned.endpoint,
+        });
+        return;
       }
+      attemptedFailureCount += 1;
+      // No error, but the field/metric carried no value for this post —
+      // Meta omits some zero-count fields rather than returning a
+      // literal zero, and we must never fabricate a value we did not
+      // receive.
+      const reason: MetricFailureReason = error ? classifyFacebookMetricFailure(error) : "metricUnsupported";
+      failedMetrics.push({ metric: planned.internalMetric, reason });
+      metricRecords.push({
+        providerMetric: planned.providerMetric,
+        internalMetric: planned.internalMetric,
+        value: null,
+        nativeUnit: planned.nativeUnit,
+        status: toMetricRecordStatus(reason),
+        period: planned.period,
+        sourceEndpoint: planned.endpoint,
+        safeReasonCode: reason,
+      });
+    };
+
+    // Known in advance (mostly Meta's June 2026 Page Insights
+    // deprecations) — recorded for provenance, never actually requested.
+    for (const excluded of plan.excludedMetrics) {
+      failedMetrics.push({ metric: excluded.internalMetric, reason: toMetricFailureReason(excluded.reason) });
+      metricRecords.push({
+        providerMetric: excluded.providerMetric,
+        internalMetric: excluded.internalMetric,
+        value: null,
+        nativeUnit: excluded.nativeUnit,
+        status: excluded.reason,
+        sourceEndpoint: excluded.endpoint,
+        safeReasonCode: excluded.reason,
+      });
     }
 
-    const candidates = insightsMetricCandidatesFor(contentType);
-    const combined = await requestFacebookInsights(postId, pageAccessToken, candidates);
-    if (combined.ok) {
-      for (const metric of candidates) {
-        const outputName = INSIGHTS_METRIC_OUTPUT_NAMES[metric] ?? metric;
-        if (combined.values.has(metric)) {
-          metrics[outputName] = combined.values.get(metric)!;
-          successfulMetrics.push(outputName);
-        } else {
-          failedMetrics.push({ metric: outputName, reason: "metricUnsupported" });
+    for (const planned of plan.objectFieldMetrics) {
+      const result = await requestFacebookField(postId, pageAccessToken, planned.providerMetric);
+      if (!result.ok) {
+        record(planned, undefined, result.error);
+        continue;
+      }
+      record(planned, extractObjectFieldValue(planned.providerMetric, result.body), null);
+    }
+
+    if (plan.insightsMetrics.length > 0) {
+      const combined = await requestFacebookInsights(
+        postId,
+        pageAccessToken,
+        plan.insightsMetrics.map((m) => m.providerMetric),
+      );
+      if (combined.ok) {
+        for (const planned of plan.insightsMetrics) {
+          record(planned, combined.values.get(planned.providerMetric), null);
+        }
+      } else {
+        for (const planned of plan.insightsMetrics) {
+          const single = await requestFacebookInsights(postId, pageAccessToken, [planned.providerMetric]);
+          record(planned, single.ok ? single.values.get(planned.providerMetric) : undefined, single.ok ? null : single.error);
         }
       }
-    } else {
-      for (const metric of candidates) {
-        const outputName = INSIGHTS_METRIC_OUTPUT_NAMES[metric] ?? metric;
-        const single = await requestFacebookInsights(postId, pageAccessToken, [metric]);
-        if (single.ok && single.values.has(metric)) {
-          metrics[outputName] = single.values.get(metric)!;
-          successfulMetrics.push(outputName);
-        } else {
-          failedMetrics.push({
-            metric: outputName,
-            reason: classifyFacebookMetricFailure(single.ok ? null : single.error),
-          });
-        }
-      }
+    }
+    for (const planned of plan.independentInsightsMetrics) {
+      const single = await requestFacebookInsights(postId, pageAccessToken, [planned.providerMetric]);
+      record(planned, single.ok ? single.values.get(planned.providerMetric) : undefined, single.ok ? null : single.error);
     }
 
     if (successfulMetrics.length === 0) {
+      const nothingWasEverAttempted = attemptedCount === 0;
       return {
         kind: "unsupported",
         failedMetrics,
-        safeMessage: "Facebook did not return any supported metrics for this Page post.",
+        safeMessage: nothingWasEverAttempted
+          ? "Facebook has no known or documented performance metric for this content type yet."
+          : "Facebook did not return any supported metrics for this Page post.",
+        dataCompleteness: nothingWasEverAttempted ? "untested" : "unavailable",
+        metricRecords,
+        providerObjectType,
       };
     }
     return {
@@ -480,7 +707,89 @@ export class FacebookConnector implements PlatformConnector {
       metrics,
       successfulMetrics,
       failedMetrics,
-      dataCompleteness: failedMetrics.length === 0 ? "complete" : "partial",
+      dataCompleteness: attemptedFailureCount === 0 ? "complete" : "partial",
+      metricRecords,
+      providerObjectType,
     };
+  }
+
+  // Page-level insights, always requested independently of any post's
+  // metrics and never mixed into a post-level snapshot — Meta's Page
+  // Insights endpoint describes the whole Page, not one piece of
+  // content. Combined-first, bisected metric-by-metric only if the
+  // combined call is rejected, mirroring fetchPagePostMetrics.
+  async fetchPageInsights(
+    pageAccessToken: string,
+    pageId: string,
+  ): Promise<{ period: string; completeness: DataCompleteness; metrics: AccountMetricRecord[] }> {
+    const plan = planFacebookPageInsightsRequest({ grantedPermissions: OAUTH_SCOPE.split(",") });
+
+    const metrics: AccountMetricRecord[] = [];
+    let attemptedCount = 0;
+    let successCount = 0;
+
+    const record = (planned: PlannedMetric, value: number | undefined, error: MetaSafeError | null | undefined) => {
+      attemptedCount += 1;
+      if (typeof value === "number") {
+        successCount += 1;
+        metrics.push({
+          providerMetric: planned.providerMetric,
+          internalMetric: planned.internalMetric,
+          value,
+          nativeUnit: planned.nativeUnit,
+          status: "available",
+          period: planned.period,
+          sourceEndpoint: planned.endpoint,
+        });
+        return;
+      }
+      const reason: MetricFailureReason = error ? classifyFacebookMetricFailure(error) : "metricUnsupported";
+      metrics.push({
+        providerMetric: planned.providerMetric,
+        internalMetric: planned.internalMetric,
+        value: null,
+        nativeUnit: planned.nativeUnit,
+        status: toMetricRecordStatus(reason),
+        period: planned.period,
+        sourceEndpoint: planned.endpoint,
+        safeReasonCode: reason,
+      });
+    };
+
+    for (const excluded of plan.excludedMetrics) {
+      metrics.push({
+        providerMetric: excluded.providerMetric,
+        internalMetric: excluded.internalMetric,
+        value: null,
+        nativeUnit: excluded.nativeUnit,
+        status: excluded.reason,
+        sourceEndpoint: excluded.endpoint,
+        safeReasonCode: excluded.reason,
+      });
+    }
+
+    if (plan.metrics.length > 0) {
+      const combined = await requestFacebookPageInsights(
+        pageId,
+        pageAccessToken,
+        plan.metrics.map((m) => m.providerMetric),
+        plan.period,
+      );
+      if (combined.ok) {
+        for (const planned of plan.metrics) {
+          record(planned, combined.values.get(planned.providerMetric), null);
+        }
+      } else {
+        for (const planned of plan.metrics) {
+          const single = await requestFacebookPageInsights(pageId, pageAccessToken, [planned.providerMetric], plan.period);
+          record(planned, single.ok ? single.values.get(planned.providerMetric) : undefined, single.ok ? null : single.error);
+        }
+      }
+    }
+
+    const completeness: DataCompleteness =
+      attemptedCount === 0 ? "untested" : successCount === 0 ? "unavailable" : successCount === attemptedCount ? "complete" : "partial";
+
+    return { period: plan.period, completeness, metrics };
   }
 }

@@ -32,21 +32,32 @@ test("does not guess an unrecognized Instagram media type", () => {
   assert.equal(mapInstagramContentType(undefined, undefined), "unknown");
 });
 
-test("maps Facebook Reel to reel", () => {
-  assert.equal(mapFacebookContentType(true, "video_inline"), "reel");
+test("maps a Facebook video attachment to feedVideo, never guessing reel", () => {
+  assert.equal(mapFacebookContentType("video_inline", "video", undefined, undefined), "feedVideo");
+  assert.equal(mapFacebookContentType("video_autoplay", undefined, undefined, undefined), "feedVideo");
 });
 
-test("maps Facebook video attachment to video", () => {
-  assert.equal(mapFacebookContentType(false, "video_inline"), "video");
+test("maps a Facebook photo attachment to imagePost", () => {
+  assert.equal(mapFacebookContentType("photo", "photo", undefined, undefined), "imagePost");
 });
 
-test("maps Facebook photo attachment to imagePost", () => {
-  assert.equal(mapFacebookContentType(false, "photo"), "imagePost");
+test("maps a Facebook album attachment to album", () => {
+  assert.equal(mapFacebookContentType("album", undefined, undefined, undefined), "album");
 });
 
-test("does not guess an unrecognized Facebook attachment type", () => {
-  assert.equal(mapFacebookContentType(false, "event"), "unknown");
-  assert.equal(mapFacebookContentType(false, undefined), "unknown");
+test("maps a Facebook link/share attachment to linkPost", () => {
+  assert.equal(mapFacebookContentType("share", "link", undefined, undefined), "linkPost");
+  assert.equal(mapFacebookContentType("native_templates", "link", undefined, undefined), "linkPost");
+});
+
+test("maps a Facebook status update with no attachment to textPost", () => {
+  assert.equal(mapFacebookContentType(undefined, undefined, "status", undefined), "textPost");
+  assert.equal(mapFacebookContentType(undefined, undefined, undefined, "mobile_status_update"), "textPost");
+});
+
+test("does not guess an unrecognized Facebook attachment or object type", () => {
+  assert.equal(mapFacebookContentType("event", undefined, undefined, undefined), "unknown");
+  assert.equal(mapFacebookContentType(undefined, undefined, undefined, undefined), "unknown");
 });
 
 test("maps Pinterest image Pin to pin", () => {

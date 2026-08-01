@@ -146,6 +146,39 @@ test("Facebook Page references its parent Facebook Account connectionId", async 
   });
 });
 
+test("verifyFacebookPagePermissions rejects when the Facebook Account is not connected", async () => {
+  await withEncryptionKey(async () => {
+    const { service } = buildService();
+    await assert.rejects(() => service.verifyFacebookPagePermissions());
+  });
+});
+
+test("verifyFacebookPagePermissions rejects when the Facebook Page is not connected", async () => {
+  await withEncryptionKey(async () => {
+    const { service } = buildService();
+    await service.handleFacebookAccountCallback("code", stateFor(service, "facebook-account"));
+    await assert.rejects(() => service.verifyFacebookPagePermissions());
+  });
+});
+
+test("verifyFacebookPagePermissions returns the connector's real token/permission verification once both are connected", async () => {
+  await withEncryptionKey(async () => {
+    const { service, facebookConnector } = buildService();
+    await service.handleFacebookAccountCallback("code", stateFor(service, "facebook-account"));
+    await service.selectFacebookPage("page-1");
+
+    facebookConnector.tokenVerificationResult = {
+      userToken: { valid: true, belongsToApp: true, hasReadInsights: true, hasPagesReadEngagement: true },
+      pageToken: { valid: true, belongsToApp: true, belongsToExpectedPage: true },
+      pageIdMatches: true,
+    };
+
+    const result = await service.verifyFacebookPagePermissions();
+    assert.equal(result.userToken.hasReadInsights, true);
+    assert.equal(result.pageIdMatches, true);
+  });
+});
+
 // Scenario 11: multiple Pages require explicit user selection.
 test("multiple managed Pages are listed and only the explicitly selected one is persisted", async () => {
   await withEncryptionKey(async () => {

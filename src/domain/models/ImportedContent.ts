@@ -1,9 +1,10 @@
 import type { Platform } from "@/domain/models/PlatformConnection";
 
-// "video" remains Facebook's generic feed-video classification (see
-// mapFacebookContentType) — "feedVideo" is Instagram-specific, added so
-// an Instagram feed VIDEO (not a Reel, not a Story) has its own metric
-// map instead of silently sharing Facebook's.
+// "video" is kept only so already-imported Facebook content stored
+// under the old classification still type-checks on read — Facebook's
+// classifier no longer emits it, using "feedVideo" (shared with
+// Instagram's own feed-video classification) instead. "textPost",
+// "linkPost", and "album" are Facebook-specific.
 export type ContentType =
   | "reel"
   | "story"
@@ -11,6 +12,9 @@ export type ContentType =
   | "carousel"
   | "video"
   | "feedVideo"
+  | "textPost"
+  | "linkPost"
+  | "album"
   | "pin"
   | "videoPin"
   | "unknown";

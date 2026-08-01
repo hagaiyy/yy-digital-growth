@@ -1,4 +1,7 @@
-import type { FacebookManagedPage } from "@/application/connectors/FacebookConnector";
+import type {
+  FacebookManagedPage,
+  FacebookTokenVerificationResult,
+} from "@/application/connectors/FacebookConnector";
 import type { AccountInsightsGroupResult, InstagramTokenSet } from "@/application/connectors/InstagramConnector";
 import type { PinterestTokenSet } from "@/application/connectors/PinterestConnector";
 import {
@@ -8,6 +11,8 @@ import {
   type VerifiedIdentity,
 } from "@/application/connectors/types";
 import type { ContentType } from "@/domain/models/ImportedContent";
+import type { DataCompleteness } from "@/domain/models/PerformanceSnapshot";
+import type { AccountMetricRecord } from "@/domain/models/AccountPerformanceSnapshot";
 
 export { ConnectorError };
 
@@ -202,8 +207,38 @@ export class FakeFacebookConnector {
     _pageAccessToken: string,
     postId: string,
     _contentType: ContentType,
+    _providerObjectType?: string,
   ): Promise<MetricsFetchOutcome> {
     return this.pageMetricsOutcomeFor(postId);
+  }
+
+  pageInsightsResult: { period: string; completeness: DataCompleteness; metrics: AccountMetricRecord[] } = {
+    period: "day",
+    completeness: "untested",
+    metrics: [],
+  };
+  fetchPageInsightsCallCount = 0;
+
+  async fetchPageInsights(
+    _pageAccessToken: string,
+    _pageId: string,
+  ): Promise<{ period: string; completeness: DataCompleteness; metrics: AccountMetricRecord[] }> {
+    this.fetchPageInsightsCallCount += 1;
+    return this.pageInsightsResult;
+  }
+
+  tokenVerificationResult: FacebookTokenVerificationResult = {
+    userToken: { valid: true, belongsToApp: true, hasReadInsights: true, hasPagesReadEngagement: true },
+    pageToken: { valid: true, belongsToApp: true, belongsToExpectedPage: true },
+    pageIdMatches: true,
+  };
+
+  async verifyTokenState(
+    _userAccessToken: string,
+    _pageAccessToken: string,
+    _expectedPageId: string,
+  ): Promise<FacebookTokenVerificationResult> {
+    return this.tokenVerificationResult;
   }
 }
 

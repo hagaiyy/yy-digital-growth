@@ -93,9 +93,10 @@ export async function extractMetaSafeError(response: Response): Promise<MetaSafe
 // A metrics request is always per-metric now — one rejected metric can
 // never erase the others fetched alongside it (see MetricFailure above).
 // `metricRecords`/`accountType`/`providerMediaType`/`providerMediaProductType`
-// are optional additive fields: only Instagram's connector populates them
-// today (see InstagramConnector.fetchContentMetrics), so Facebook's and
-// Pinterest's existing MetricsFetchOutcome producers need no change.
+// are optional additive fields populated by Instagram's connector;
+// `providerObjectType` is Facebook's own additive field (its post
+// `type`/`status_type`) — Pinterest's existing MetricsFetchOutcome
+// producer needs no change either way.
 export type MetricsFetchOutcome =
   | {
       // At least one requested metric returned a real value.
@@ -108,6 +109,7 @@ export type MetricsFetchOutcome =
       accountType?: string;
       providerMediaType?: string;
       providerMediaProductType?: string;
+      providerObjectType?: string;
     }
   | {
       // Every requested metric was rejected or does not apply — the
@@ -125,6 +127,7 @@ export type MetricsFetchOutcome =
       accountType?: string;
       providerMediaType?: string;
       providerMediaProductType?: string;
+      providerObjectType?: string;
     }
   | {
       // The metrics attempt itself could not be made at all (e.g. an

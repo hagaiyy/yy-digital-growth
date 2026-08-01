@@ -278,13 +278,14 @@ export class DataImportService {
     const metricsOutcome = await fetchMetrics(record.importedContentId);
     const snapshotHour = truncateToHourIso(this.now());
 
-    // The additive Instagram-only snapshot fields (accountType,
-    // contentType, providerMediaType, providerMediaProductType,
-    // metricRecords) are gated on platform explicitly, not on whether
-    // the outcome happens to carry them — Facebook's and Pinterest's
-    // snapshot documents must keep the exact shape they always had.
-    const instagramFields =
-      connection.platform === "instagram" && metricsOutcome.kind !== "failed"
+    // The additive per-platform snapshot fields (accountType, contentType,
+    // providerMediaType/providerMediaProductType for Instagram,
+    // providerObjectType for Facebook, metricRecords for both) are gated
+    // on platform explicitly, not on whether the outcome happens to
+    // carry them — Pinterest's snapshot documents must keep the exact
+    // shape they always had.
+    const platformFields =
+      metricsOutcome.kind !== "failed" && connection.platform === "instagram"
         ? {
             accountType: metricsOutcome.accountType,
             contentType: item.contentType,
@@ -292,7 +293,13 @@ export class DataImportService {
             providerMediaProductType: metricsOutcome.providerMediaProductType,
             metricRecords: metricsOutcome.metricRecords,
           }
-        : {};
+        : metricsOutcome.kind !== "failed" && connection.platform === "facebook"
+          ? {
+              contentType: item.contentType,
+              providerObjectType: metricsOutcome.providerObjectType,
+              metricRecords: metricsOutcome.metricRecords,
+            }
+          : {};
 
     if (metricsOutcome.kind === "success") {
       await this.performanceSnapshotRepository.upsertByHour({
@@ -304,7 +311,7 @@ export class DataImportService {
         collectedAt: this.now(),
         metrics: metricsOutcome.metrics,
         dataCompleteness: metricsOutcome.dataCompleteness,
-        ...instagramFields,
+        ...platformFields,
       });
       const partial = metricsOutcome.dataCompleteness === "partial";
       return {
@@ -330,7 +337,7 @@ export class DataImportService {
         collectedAt: this.now(),
         metrics: {},
         dataCompleteness: metricsOutcome.dataCompleteness ?? "unavailable",
-        ...instagramFields,
+        ...platformFields,
       });
       return {
         externalContentId: item.externalContentId,
@@ -469,11 +476,50 @@ export class DataImportService {
 
     const outcomes = await mapWithConcurrency(items, ITEM_CONCURRENCY, (item) =>
       this.importOneItem(connection, item, () =>
-        this.facebookConnector.fetchPagePostMetrics(pageAccessToken, item.externalContentId, item.contentType),
+        this.facebookConnector.fetchPagePostMetrics(
+          pageAccessToken,
+          item.externalContentId,
+          item.contentType,
+          item.platformData.provider_type as string | undefined,
+        ),
       ),
     );
 
+    // Page-level insights are fetched and persisted independently of
+    // content import — a failure here must never fail the connection or
+    // block the content items already imported above.
+    await this.importFacebookPageInsights(connection, pageAccessToken, pageId);
+
     return buildConnectionResult(connection, outcomes);
+  }
+
+  private async importFacebookPageInsights(
+    connection: PlatformConnection,
+    pageAccessToken: string,
+    pageId: string,
+  ): Promise<void> {
+    let result: Awaited<ReturnType<FacebookConnector["fetchPageInsights"]>>;
+    try {
+      result = await this.facebookConnector.fetchPageInsights(pageAccessToken, pageId);
+    } catch {
+      return;
+    }
+
+    try {
+      await this.accountPerformanceSnapshotRepository.upsertByHour({
+        schemaVersion: "1.0.0",
+        connectionId: connection.connectionId,
+        platform: connection.platform,
+        accountType: connection.accountType,
+        snapshotHour: truncateToHourIso(this.now()),
+        collectedAt: this.now(),
+        period: result.period,
+        completeness: result.completeness,
+        metrics: result.metrics,
+      });
+    } catch {
+      // A write failure here must never fail the connection.
+    }
   }
 
   private async importPinterest(

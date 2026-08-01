@@ -23,14 +23,47 @@ export function mapInstagramContentType(
   return "unknown";
 }
 
+// Facebook's /posts edge has no explicit, documented field that
+// distinguishes a Reel from an ordinary feed video the way Instagram's
+// media_product_type does — this classifier therefore never guesses
+// "reel"; every video attachment becomes "feedVideo" until a real Reel
+// is observed on this Page and a genuine distinguishing provider field
+// is confirmed live. Preserving `providerType`/`statusType` alongside
+// the classification (see FacebookConnector.fetchPageContent) means
+// that evidence, once found, doesn't require re-importing anything.
 export function mapFacebookContentType(
-  isReel: boolean,
   attachmentType: string | undefined,
+  attachmentMediaType: string | undefined,
+  providerType: string | undefined,
+  statusType: string | undefined,
 ): ContentType {
-  if (isReel) return "reel";
   const type = attachmentType?.toLowerCase();
-  if (type === "video_inline" || type === "video_autoplay" || type === "video") return "video";
-  if (type === "photo" || type === "album") return "imagePost";
+  const mediaType = attachmentMediaType?.toLowerCase();
+  const legacyType = providerType?.toLowerCase();
+  const legacyStatusType = statusType?.toLowerCase();
+
+  if (type === "album") return "album";
+  if (
+    mediaType === "video" ||
+    type === "video_inline" ||
+    type === "video_autoplay" ||
+    type === "video_direct_response" ||
+    legacyType === "video"
+  ) {
+    return "feedVideo";
+  }
+  if (type === "share" || type === "native_templates" || mediaType === "link" || legacyType === "link") {
+    return "linkPost";
+  }
+  if (type === "photo" || mediaType === "photo" || legacyType === "photo") return "imagePost";
+  if (
+    legacyType === "status" ||
+    legacyStatusType === "mobile_status_update" ||
+    legacyStatusType === "created_note" ||
+    legacyStatusType === "shared_story"
+  ) {
+    return "textPost";
+  }
   return "unknown";
 }
 

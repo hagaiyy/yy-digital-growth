@@ -569,6 +569,60 @@ test("an account-insights fetch failure never fails the Instagram connection or 
   });
 });
 
+// Part 7: Facebook Page-level insights reuse the same accountPerformanceSnapshots
+// structure as Instagram, kept separate from post-level performanceSnapshots.
+test("Facebook Page-level insights are persisted separately from post-level snapshots", async () => {
+  await withEncryptionKey(async () => {
+    const env = buildEnvironment();
+    await seedAllConnected(env);
+    env.facebookConnector.pageInsightsResult = {
+      period: "day",
+      completeness: "partial",
+      metrics: [
+        {
+          providerMetric: "page_impressions",
+          internalMetric: "impressions",
+          value: 4200,
+          nativeUnit: "count",
+          status: "available",
+          period: "day",
+          sourceEndpoint: "/{page-id}/insights",
+        },
+      ],
+    };
+
+    await env.dataImportService.runImport();
+
+    assert.equal(env.facebookConnector.fetchPageInsightsCallCount, 1);
+    const snapshots = await env.dataImportService.getLatestAccountPerformance(CONNECTION_IDS.facebookPage);
+    assert.equal(snapshots.length, 1);
+    assert.equal(snapshots[0]!.metrics[0]!.internalMetric, "impressions");
+    assert.equal(snapshots[0]!.completeness, "partial");
+
+    const postSnapshot = await env.performanceSnapshotRepository.findByImportedContentId(
+      (await env.importedContentRepository.list()).find((c) => c.platform === "facebook")!.importedContentId,
+    );
+    assert.ok(
+      postSnapshot.every((s) => (s.metrics as Record<string, unknown>).impressions !== 4200),
+      "the Page-level impressions value (4200) must never be mixed into a post-level snapshot",
+    );
+  });
+});
+
+test("a Facebook Page-insights fetch failure never fails the connection or blocks post import", async () => {
+  await withEncryptionKey(async () => {
+    const env = buildEnvironment();
+    await seedAllConnected(env);
+    env.facebookConnector.fetchPageInsights = async () => {
+      throw new Error("simulated page-insights failure");
+    };
+
+    const run = await env.dataImportService.runImport();
+    const fbResult = run.connectionResults.find((r) => r.connectionId === CONNECTION_IDS.facebookPage)!;
+    assert.notEqual(fbResult.status, "failed", "post import must still succeed");
+  });
+});
+
 test("the underlying repository throws RunningImportConflictError for a second concurrent running run", async () => {
   const env = buildEnvironment();
   const run = (overrides: Partial<{ importRunId: string }>) => ({

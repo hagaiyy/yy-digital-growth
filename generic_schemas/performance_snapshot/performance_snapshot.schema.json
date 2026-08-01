@@ -20,6 +20,7 @@
           "type": "string",
           "enum": [
             "supported",
+            "available",
             "empty",
             "unsupported",
             "invalidForContentType",
@@ -62,8 +63,22 @@
     "accountType": { "type": "string", "minLength": 1 },
     "contentType": {
       "type": "string",
-      "enum": ["reel", "story", "imagePost", "carousel", "video", "feedVideo", "pin", "videoPin", "unknown"]
+      "enum": [
+        "reel",
+        "story",
+        "imagePost",
+        "carousel",
+        "video",
+        "feedVideo",
+        "textPost",
+        "linkPost",
+        "album",
+        "pin",
+        "videoPin",
+        "unknown"
+      ]
     },
+    "providerObjectType": { "type": "string", "minLength": 1 },
     "providerMediaType": { "type": "string", "minLength": 1 },
     "providerMediaProductType": { "type": "string", "minLength": 1 },
     "metricRecords": { "type": "array", "items": { "$ref": "#/$defs/metricRecord" } },

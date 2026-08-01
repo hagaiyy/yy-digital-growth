@@ -12,8 +12,16 @@ export type DataCompleteness = "complete" | "partial" | "unavailable" | "unteste
 // metric name distinct from our internal name, the unit Meta actually
 // returned distinct from any normalized unit, and a closed status
 // instead of collapsing every non-success case into "missing".
+//
+// "supported" and "available" mean the same thing (a real value came
+// back) — both exist because Instagram's own task specified "supported"
+// and the later Facebook Page Insights task explicitly specified
+// "available" as its exact status vocabulary. Rather than fork a
+// near-duplicate status type per platform, this one union carries both
+// spellings; each connector uses the one its own task specified.
 export type MetricRecordStatus =
   | "supported"
+  | "available"
   | "empty"
   | "unsupported"
   | "invalidForContentType"
@@ -49,14 +57,17 @@ export interface PerformanceSnapshot {
   // is a real observed zero. Never collapse these into each other.
   metrics: Record<string, number | string | null>;
   dataCompleteness: DataCompleteness;
-  // Additive, optional fields populated by Instagram's structured
-  // metric pipeline only (see InstagramConnector.fetchContentMetrics) —
-  // Facebook and Pinterest snapshots simply omit them, so no migration
-  // or behavior change is required for either.
+  // Additive, optional fields populated by Instagram's and Facebook's
+  // own structured metric pipelines (see InstagramConnector and
+  // FacebookConnector) — Pinterest snapshots simply omit them, so no
+  // migration or behavior change is required for it. `providerMediaType`/
+  // `providerMediaProductType` are Instagram's raw provider fields;
+  // `providerObjectType` is Facebook's (its post `type`/`status_type`).
   accountType?: string;
   contentType?: ContentType;
   providerMediaType?: string;
   providerMediaProductType?: string;
+  providerObjectType?: string;
   metricRecords?: MetricRecord[];
   createdAt: string;
   updatedAt: string;

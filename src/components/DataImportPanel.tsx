@@ -55,6 +55,58 @@ function MetricsList({ metrics }: { metrics: Record<string, unknown> }) {
   );
 }
 
+function AccountSnapshotsSection({
+  title,
+  description,
+  snapshots,
+  error,
+}: {
+  title: string;
+  description: string;
+  snapshots: AccountPerformanceSnapshot[] | null;
+  error: string | null;
+}) {
+  return (
+    <section style={{ marginTop: "1.5rem" }}>
+      <h3>{title}</h3>
+      <p>{description}</p>
+      {error && <p style={{ color: "#ff8080" }}>{error}</p>}
+      {snapshots === null && !error && <p>Loading…</p>}
+      {snapshots !== null && snapshots.length === 0 && <p>No insights have been collected yet.</p>}
+      {snapshots !== null && snapshots.length > 0 && (
+        <div>
+          {snapshots.map((snapshot, index) => (
+            <div
+              key={`${snapshot.period}-${snapshot.timeframe ?? snapshot.since ?? index}`}
+              style={{ border: "1px solid #333", borderRadius: 6, padding: "0.75rem 1rem", marginBottom: "0.75rem" }}
+            >
+              <p style={{ margin: "0 0 0.25rem" }}>
+                <strong>period: {snapshot.period}</strong>
+                {snapshot.timeframe ? ` · timeframe: ${snapshot.timeframe}` : ""}
+                {snapshot.since ? ` · since: ${formatTimestamp(snapshot.since)}` : ""}
+                {snapshot.until ? ` · until: ${formatTimestamp(snapshot.until)}` : ""}
+                {" · completeness: "}
+                {snapshot.completeness}
+              </p>
+              <ul style={{ margin: "0 0 0.25rem" }}>
+                {snapshot.metrics.map((metric, metricIndex) => (
+                  <li key={`${metric.internalMetric}-${metricIndex}`}>
+                    {metric.internalMetric}: {metric.value === null ? "unavailable" : String(metric.value)}
+                    {" "}
+                    [{metric.status}
+                    {metric.unavailableDueToAccountSize ? ", limited by account size" : ""}]
+                  </li>
+                ))}
+              </ul>
+              <p style={{ margin: 0 }}>Collected: {formatTimestamp(snapshot.collectedAt)}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function DataImportPanel({ connections }: { connections: PlatformConnection[] }) {
   const [settings, setSettings] = useState<DataImportSettings | null>(null);
   const [limitInput, setLimitInput] = useState<string>("");
@@ -70,6 +122,9 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
 
   const [accountSnapshots, setAccountSnapshots] = useState<AccountPerformanceSnapshot[] | null>(null);
   const [accountSnapshotsError, setAccountSnapshotsError] = useState<string | null>(null);
+
+  const [facebookPageSnapshots, setFacebookPageSnapshots] = useState<AccountPerformanceSnapshot[] | null>(null);
+  const [facebookPageSnapshotsError, setFacebookPageSnapshotsError] = useState<string | null>(null);
 
   async function loadSettings(): Promise<void> {
     try {
@@ -114,11 +169,26 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
     }
   }
 
+  async function loadFacebookPageSnapshots(): Promise<void> {
+    try {
+      const body = await apiFetch<{ snapshots: AccountPerformanceSnapshot[] }>(
+        `/api/connections/${CONNECTION_IDS.facebookPage}/account-performance`,
+      );
+      setFacebookPageSnapshots(body.snapshots);
+      setFacebookPageSnapshotsError(null);
+    } catch (error) {
+      setFacebookPageSnapshotsError(
+        error instanceof Error ? error.message : "Failed to load Facebook Page-level insights.",
+      );
+    }
+  }
+
   useEffect(() => {
     void loadSettings();
     void loadLatestRun();
     void loadItems();
     void loadAccountSnapshots();
+    void loadFacebookPageSnapshots();
   }, []);
 
   async function saveLimit() {
@@ -156,6 +226,7 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
       await loadLatestRun();
       await loadItems();
       await loadAccountSnapshots();
+      await loadFacebookPageSnapshots();
     }
   }
 
@@ -326,48 +397,19 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
         )}
       </section>
 
-      <section style={{ marginTop: "1.5rem" }}>
-        <h3>Instagram account-level insights</h3>
-        <p>
-          Audience demographics, follower counts, and profile-level activity — describes the whole account,
-          never mixed with individual content metrics above.
-        </p>
-        {accountSnapshotsError && <p style={{ color: "#ff8080" }}>{accountSnapshotsError}</p>}
-        {accountSnapshots === null && !accountSnapshotsError && <p>Loading account-level insights…</p>}
-        {accountSnapshots !== null && accountSnapshots.length === 0 && (
-          <p>No account-level insights have been collected yet.</p>
-        )}
-        {accountSnapshots !== null && accountSnapshots.length > 0 && (
-          <div>
-            {accountSnapshots.map((snapshot, index) => (
-              <div
-                key={`${snapshot.period}-${snapshot.timeframe ?? snapshot.since ?? index}`}
-                style={{ border: "1px solid #333", borderRadius: 6, padding: "0.75rem 1rem", marginBottom: "0.75rem" }}
-              >
-                <p style={{ margin: "0 0 0.25rem" }}>
-                  <strong>period: {snapshot.period}</strong>
-                  {snapshot.timeframe ? ` · timeframe: ${snapshot.timeframe}` : ""}
-                  {snapshot.since ? ` · since: ${formatTimestamp(snapshot.since)}` : ""}
-                  {snapshot.until ? ` · until: ${formatTimestamp(snapshot.until)}` : ""}
-                  {" · completeness: "}
-                  {snapshot.completeness}
-                </p>
-                <ul style={{ margin: "0 0 0.25rem" }}>
-                  {snapshot.metrics.map((metric, metricIndex) => (
-                    <li key={`${metric.internalMetric}-${metricIndex}`}>
-                      {metric.internalMetric}: {metric.value === null ? "unavailable" : String(metric.value)}
-                      {" "}
-                      [{metric.status}
-                      {metric.unavailableDueToAccountSize ? ", limited by account size" : ""}]
-                    </li>
-                  ))}
-                </ul>
-                <p style={{ margin: 0 }}>Collected: {formatTimestamp(snapshot.collectedAt)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <AccountSnapshotsSection
+        title="Instagram account-level insights"
+        description="Audience demographics, follower counts, and profile-level activity — describes the whole account, never mixed with individual content metrics above."
+        snapshots={accountSnapshots}
+        error={accountSnapshotsError}
+      />
+
+      <AccountSnapshotsSection
+        title="Facebook Page-level insights"
+        description="Page impressions, engagement, video views, and follower activity — describes the whole Page, never mixed with individual post metrics above."
+        snapshots={facebookPageSnapshots}
+        error={facebookPageSnapshotsError}
+      />
     </div>
   );
 }

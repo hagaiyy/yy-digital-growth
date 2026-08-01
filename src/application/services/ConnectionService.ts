@@ -9,7 +9,7 @@ import {
 import type { PlatformConnectionRepository } from "@/domain/repositories/PlatformConnectionRepository";
 import type { PlatformCredentialRepository } from "@/domain/repositories/PlatformCredentialRepository";
 
-import type { FacebookConnector } from "@/application/connectors/FacebookConnector";
+import type { FacebookConnector, FacebookTokenVerificationResult } from "@/application/connectors/FacebookConnector";
 import type { InstagramConnector } from "@/application/connectors/InstagramConnector";
 import type { PinterestConnector } from "@/application/connectors/PinterestConnector";
 import { ConnectorError } from "@/application/connectors/types";
@@ -527,6 +527,29 @@ export class ConnectionService {
   async disconnectFacebookPage(): Promise<PlatformConnection> {
     await this.credentialRepository.delete(CONNECTION_IDS.facebookPage);
     return this.resetToNotConnected(DEFINITIONS.find((d) => d.connectionId === CONNECTION_IDS.facebookPage)!);
+  }
+
+  // Real server-side proof of token/permission state for both the
+  // Facebook Account (user) token and the Facebook Page token — never
+  // inferred from stored `grantedScopes` or from what was requested at
+  // authorization time. Throws SafeServiceError if either connection
+  // isn't actually connected yet, rather than returning a
+  // misleadingly-false verification result.
+  async verifyFacebookPagePermissions(): Promise<FacebookTokenVerificationResult> {
+    const [accountCredential, pageConnection, pageCredential] = await Promise.all([
+      this.credentialRepository.findByConnectionId(CONNECTION_IDS.facebookAccount),
+      this.connectionRepository.findByConnectionId(CONNECTION_IDS.facebookPage),
+      this.credentialRepository.findByConnectionId(CONNECTION_IDS.facebookPage),
+    ]);
+    if (!accountCredential) {
+      throw new SafeServiceError("facebookAccountNotConnected", "Facebook Account is not connected.");
+    }
+    if (!pageConnection || !pageConnection.externalAccountId || !pageCredential) {
+      throw new SafeServiceError("facebookPageNotConnected", "Facebook Page is not connected.");
+    }
+    const { accessToken: userAccessToken } = decryptCredential(accountCredential) as { accessToken: string };
+    const { accessToken: pageAccessToken } = decryptCredential(pageCredential) as { accessToken: string };
+    return this.facebookConnector.verifyTokenState(userAccessToken, pageAccessToken, pageConnection.externalAccountId);
   }
 
   // ---- Pinterest ----
