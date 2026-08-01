@@ -139,11 +139,11 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "likes.summary(true)",
       internalMetric: "likes",
       nativeUnit: "count",
-      status: "untested",
+      status: "available",
       endpoint: POST_OBJECT_ENDPOINT,
       requiredPermission: "pages_read_user_content",
       safeLimitation:
-        "Confirmed rejected (OAuthException code=10, imagePost/linkPost, 2026-08-01) under pages_read_engagement + read_insights alone. pages_read_user_content is now Ready for testing and requested — re-tested live, not assumed to work just because the scope is now granted.",
+        "Live production response (imagePost/linkPost, 2026-08-01): confirmed supported after pages_read_user_content reconnect — real value returned (0 on both tested posts), no longer rejected with OAuthException code=10.",
     }),
   ),
   ...forEachContentType([...NON_VIDEO_CONTENT_TYPES, ...VIDEO_CONTENT_TYPES], (contentType) =>
@@ -152,11 +152,11 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "comments.summary(true)",
       internalMetric: "comments",
       nativeUnit: "count",
-      status: "untested",
+      status: "available",
       endpoint: POST_OBJECT_ENDPOINT,
       requiredPermission: "pages_read_user_content",
       safeLimitation:
-        "Confirmed rejected (OAuthException code=10, imagePost/linkPost, 2026-08-01) under pages_read_engagement + read_insights alone. pages_read_user_content is now Ready for testing and requested — re-tested live, not assumed to work just because the scope is now granted.",
+        "Live production response (imagePost/linkPost, 2026-08-01): confirmed supported after pages_read_user_content reconnect — real value returned (0 on both tested posts), no longer rejected with OAuthException code=10.",
     }),
   ),
   ...forEachContentType([...NON_VIDEO_CONTENT_TYPES, ...VIDEO_CONTENT_TYPES], (contentType) =>

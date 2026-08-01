@@ -1,12 +1,12 @@
 # Claude Session Handoff
 
-_Written 2026-08-01. This is a snapshot for the next session — it does not describe new work and no code was changed to produce it._
+_Written 2026-08-01. Updated 2026-08-01 after completing the pages_read_user_content live verification described in the original §4._
 
 ## 1. Current production status
 
-- **Instagram**: connected (`_hagaiyy`, MEDIA_CREATOR). Full content + metric import working via the request-planner/registry architecture. Account-level insights (demographics, day-period aggregates) also working, stored separately from content metrics. Last live import: 10/10 items imported successfully.
+- **Instagram**: connected (`_hagaiyy`, MEDIA_CREATOR). Full content + metric import working via the request-planner/registry architecture. Account-level insights (demographics, day-period aggregates) also working, stored separately from content metrics.
 - **Facebook Account**: authorization-only by design — proven live (`GET /me/posts` always returns zero posts without Advanced Access this app doesn't have) and excluded from Data Import eligibility. It exists only to discover managed Pages.
-- **Facebook Page (YY Studio)**: content import working (2 real posts on this Page). Metrics **partially** available — see §5. As of this snapshot the Facebook Account connection is mid-reconnect (status `connecting`, started 2026-08-01T20:17:25Z) and the Facebook Page is `notConnected` as a result (Page auth cascades from the Account). **The user has started but not yet confirmed completion of the reconnect requested in step 4 below.**
+- **Facebook Page (YY Studio)**: content import working (2 real posts on this Page). Reconnect with `pages_read_user_content` is **confirmed complete** — `GET /api/connections/facebook/permission-status` returns `hasPagesReadUserContent: true` along with all other checks passing (valid, belongsToApp, hasReadInsights, hasPagesReadEngagement, pageToken valid/belongsToApp/belongsToExpectedPage, pageIdMatches). `likes.summary(true)` and `comments.summary(true)` are now confirmed **available** live (see §5) — the registry has been updated accordingly.
 - **Pinterest**: `setupRequired` — `PINTEREST_APP_ID`/`PINTEREST_APP_SECRET` are not set. Per the user, also blocked on Pinterest app/Privacy Policy setup on Pinterest's side. Not something code can fix.
 
 ## 2. Current repository state
@@ -29,26 +29,30 @@ _Written 2026-08-01. This is a snapshot for the next session — it does not des
 ## 3. Exact Facebook OAuth state
 
 - **Scopes currently requested in code** (`FacebookConnector.ts`, deployed): `public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,read_insights`
-- **Scopes actually granted in the stored token**: unknown at this exact moment — the Facebook Account connection is mid-reconnect (see §1). Before this reconnect began, the stored token had `public_profile,pages_show_list,pages_read_engagement,read_insights` (no `pages_read_user_content`).
-- New Meta Developer permission added and requested: `pages_read_user_content` (marked "Ready for testing" in the Meta app)
-- **No further OAuth code change is needed** — this was the pending item and it is already implemented and deployed as of commit `70311e4`.
+- **Scopes actually granted in the stored token**: confirmed live via `GET /api/connections/facebook/permission-status` on 2026-08-01 — `hasPagesReadUserContent: true`, plus `valid/belongsToApp/hasReadInsights/hasPagesReadEngagement` all true, and `pageToken.{valid,belongsToApp,belongsToExpectedPage}`/`pageIdMatches` all true.
+- New Meta Developer permission added and requested: `pages_read_user_content` (marked "Ready for testing" in the Meta app) — now confirmed granted in the live token.
+- **No further OAuth code change is needed.**
 
-## 4. Exact next execution steps
+## 4. Live verification completed 2026-08-01 (this was the pending item — now done)
 
 1. ~~Update OAuth scope list~~ — done (`70311e4`)
 2. ~~Deploy~~ — done, verified live
-3. **Wait for the user to confirm the Facebook disconnect/reconnect is complete** (in progress as of this snapshot)
-4. Verify the new token via `GET /api/connections/facebook/permission-status` — confirm `userToken.hasPagesReadUserContent: true` along with the existing checks (valid, belongsToApp, hasReadInsights, hasPagesReadEngagement, pageToken valid/belongsToApp/belongsToExpectedPage, pageIdMatches)
-5. Re-test only the previously blocked Page fields first: `likes.summary(true)`, `comments.summary(true)` (these came back from `untested` after the scope change — see §5)
-6. Run one live production import with Recent Content Limit = 10
-7. Report: likes/comments counts per post, shares, existing Insights metrics, any remaining rejected metrics with exact safe Meta error type/code/subcode, completeness per post, `importRun` ID, database deduplication result
+3. ~~Wait for user to confirm reconnect~~ — done, confirmed via permission-status endpoint
+4. ~~Verify new token~~ — done, all checks pass (see §3)
+5. ~~Re-test `likes.summary(true)`, `comments.summary(true)`~~ — done, both **available** live (see §5). Registry (`metricCapabilityRegistry.ts`) updated from `untested` to `available` for both.
+6. ~~Run one live production import with Recent Content Limit = 10~~ — done. `importRunId: import_run_b518bb03-d350-4ceb-bdcf-d5375abf153a`, status `completedWithErrors` (see note below on why that status is misleading here), `totals: {connections: 2, requestedItems: 12, createdItems: 0, updatedItems: 12, failedItems: 0, skippedItems: 0}`. Instagram: 10/10 updated, `status: success`. Facebook Page: 2/2 updated, `status: partial` — the "partial" is driven entirely by already-known `empty`/`deprecated` metrics (shares, impressions, reach, engagedUsers), not a new failure.
+7. Report (per-post, both posts on the Facebook Page):
+   - Post `1248396251688750_122101298661416293` (imagePost): likes=0, comments=0, views=0, clicks=0, reactionsLikeTotal=0. `dataCompleteness: partial`.
+   - Post `1248396251688750_122097918585416293` (linkPost): likes=0, comments=0, views=5, clicks=0, reactionsLikeTotal=0. `dataCompleteness: partial`.
+   - Both posts: `shares` and `post_engaged_users` → `empty`/`metricUnsupported` (expected, matches §5 prior finding, not a regression). `impressions`/`reach` → `deprecated` (expected).
+   - **Gap found, not fixed**: the app does NOT persist the raw Meta `type`/`code`/`subcode`/`fbtrace_id` per failed metric anywhere queryable. `FacebookConnector.ts`'s `classifyFacebookMetricFailure()` collapses every Graph API error into a coarse enum (`tokenInvalid`/`permissionMissing`/`metricUnsupported`/`requestRejected`) before it's stored as `safeReasonCode` on `MetricRecord`. The raw error is discarded after classification. If exact Meta error codes per metric are ever needed again, this is where to add persistence — not attempted this session since it wasn't necessary to confirm the `pages_read_user_content` fix worked.
+   - Database dedup: both posts show `createdCount: 0, updatedCount: 2` — confirms the existing `{importedContentId, snapshotHour}` unique-snapshot invariant is working (re-import within the same hour updates, doesn't duplicate).
 
-## 5. Current proven Facebook Page metrics (from the live run before the `pages_read_user_content` reconnect)
+## 5. Current proven Facebook Page metrics (post-`pages_read_user_content` reconnect, confirmed live 2026-08-01)
 
-- **available**: `post_media_view`→views, `post_clicks`→clicks, `post_reactions_like_total`, `page_post_engagements`, `page_video_views`, `page_views_total`, `page_total_media_view_unique`
+- **available**: `post_media_view`→views, `post_clicks`→clicks, `post_reactions_like_total`, `likes.summary(true)`→likes, `comments.summary(true)`→comments, `page_post_engagements`, `page_video_views`, `page_views_total`, `page_total_media_view_unique`
 - **empty** (accepted, no value returned — never treated as zero): `shares`, `post_engaged_users`, `page_impressions`, `page_fans`, `page_fan_adds_unique`, `page_fan_removes_unique`, `page_posts_impressions`
 - **deprecated** (Meta's June 2026 Page Insights deprecation, confirmed in current docs — never requested): `post_impressions`, `post_impressions_unique`, `post_video_views_unique`, `page_impressions_unique`, `page_video_views_unique`
-- **permissionRequired → reset to untested for re-verification**: `likes.summary(true)`, `comments.summary(true)` — confirmed rejected (`OAuthException code=10`) under the pre-`pages_read_user_content` scope. Registry now marks them `untested` again pending the live re-test in §4.
 - **untested**: all video/Reel post-level metrics (`post_video_views`, `post_video_avg_time_watched`, `post_video_view_time`, `post_video_complete_views_30s`) — this Page has no video/Reel content yet to test against.
 
 ## 6. Current proven Instagram metrics
@@ -80,8 +84,9 @@ _Written 2026-08-01. This is a snapshot for the next session — it does not des
 
 ## 9. Open tasks only
 
-- Complete Facebook `pages_read_user_content` live verification (§4) once the user confirms reconnection
+- ~~Complete Facebook `pages_read_user_content` live verification~~ — done 2026-08-01, see §4
 - Facebook video/Reel post metrics remain untested (no video/Reel content on the connected Page yet)
 - Instagram Story and feedVideo metrics remain untested (no real content of those types on the connected account yet)
 - Pinterest is blocked on Pinterest-side app/Privacy Policy setup, not a code task
+- (Optional, not urgent) Raw Meta error type/code/subcode per failed metric isn't persisted anywhere — only a coarse classification enum. Add persistence in `FacebookConnector.ts`'s failure-classification path if exact per-metric Meta error codes are needed later.
 - UI work has not started — resume from the agreed table model in §8 when ready
