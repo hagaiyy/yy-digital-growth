@@ -168,7 +168,13 @@ test("verifyFacebookPagePermissions returns the connector's real token/permissio
     await service.selectFacebookPage("page-1");
 
     facebookConnector.tokenVerificationResult = {
-      userToken: { valid: true, belongsToApp: true, hasReadInsights: true, hasPagesReadEngagement: true },
+      userToken: {
+        valid: true,
+        belongsToApp: true,
+        hasReadInsights: true,
+        hasPagesReadEngagement: true,
+        hasPagesReadUserContent: true,
+      },
       pageToken: { valid: true, belongsToApp: true, belongsToExpectedPage: true },
       pageIdMatches: true,
     };

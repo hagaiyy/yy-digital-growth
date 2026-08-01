@@ -17,11 +17,14 @@ test("a post where every genuinely-attempted metric succeeds is 'complete', not 
         { status: 200 },
       );
     }
-    // Object field lookup — only "shares" is still genuinely requested;
-    // likes.summary/comments.summary are excluded at planning time
-    // (confirmed permanently rejected, see metricCapabilityRegistry).
+    // Object field lookup — likes.summary/comments.summary/shares are
+    // all genuinely requested now that pages_read_user_content is
+    // granted (registry status "untested", re-verified live rather than
+    // assumed to work just because the scope was added).
     const fields = url.searchParams.get("fields") ?? "";
     const body: Record<string, unknown> = {};
+    if (fields.includes("likes")) body.likes = { summary: { total_count: 7 } };
+    if (fields.includes("comments")) body.comments = { summary: { total_count: 4 } };
     if (fields === "shares") body.shares = { count: 1 };
     return new Response(JSON.stringify(body), { status: 200 });
   }) as typeof fetch;
@@ -33,10 +36,10 @@ test("a post where every genuinely-attempted metric succeeds is 'complete', not 
     assert.equal(outcome.kind, "success");
     if (outcome.kind === "success") {
       assert.equal(outcome.dataCompleteness, "complete");
+      assert.equal(outcome.metrics.likes, 7);
+      assert.equal(outcome.metrics.comments, 4);
       const excludedNames = outcome.failedMetrics.map((f) => f.metric);
       assert.ok(excludedNames.includes("impressions"), "deprecated metrics are recorded for provenance");
-      assert.ok(excludedNames.includes("likes"), "confirmed-permission-gapped metrics are recorded for provenance");
-      assert.ok(excludedNames.includes("comments"));
     }
   } finally {
     global.fetch = originalFetch;

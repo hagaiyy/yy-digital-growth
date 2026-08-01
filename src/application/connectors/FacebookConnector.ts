@@ -22,25 +22,27 @@ import {
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
-// Read-only scope only: no publishing, advertising, moderation,
-// messaging, ads, or webhook permission is requested. `read_insights`
-// was added once the Meta Developer app marked it "Ready for testing" —
-// previously Meta rejected it for this app with "Invalid Scopes", which
-// is why Page-level and several post-level metrics degraded to
-// "unsupported" (see fetchPagePostMetrics). `business_management` is
-// deliberately not requested: fetchManagedPages only ever calls
-// GET /me/accounts, which needs no Business Manager permission.
-const OAUTH_SCOPE = "public_profile,pages_show_list,pages_read_engagement,read_insights";
+// Read-only scope only: no publishing, moderation, messaging, ads,
+// webhook, or personal-profile permission is requested. `read_insights`
+// and `pages_read_user_content` were each added once the Meta Developer
+// app marked them "Ready for testing" — `pages_read_user_content` is
+// specifically what live isolation testing proved likes.summary/
+// comments.summary need (both rejected with OAuthException code=10
+// under pages_read_engagement + read_insights alone; see the metric
+// capability registry). `business_management` is deliberately not
+// requested: fetchManagedPages only ever calls GET /me/accounts, which
+// needs no Business Manager permission.
+const OAUTH_SCOPE =
+  "public_profile,pages_show_list,pages_read_engagement,pages_read_user_content,read_insights";
 
-// Stage A (content discovery) fields only — see fetchPageContent. Engagement
-// fields (likes/comments summary, shares) are proven to require a
-// permission this app's Page token does not have (live-tested: rejected
-// everywhere with OAuthException code=10) and are fetched independently,
-// per post, in fetchPagePostMetrics instead. `status_type` is the only
-// documented signal for a post with no attachment at all (a plain text
-// status update) — the legacy `type` field is deliberately never
-// requested: live-tested and confirmed rejected with OAuthException
-// code=12 ("deprecated") for this app's Page token.
+// Stage A (content discovery) fields only — see fetchPageContent.
+// Engagement summary fields (likes/comments) are fetched independently,
+// per post, in fetchPagePostMetrics instead, so one gated or rejected
+// field there can never block post identity import. `status_type` is
+// the only documented signal for a post with no attachment at all (a
+// plain text status update) — the legacy `type` field is deliberately
+// never requested: live-tested and confirmed rejected with
+// OAuthException code=12 ("deprecated") for this app's Page token.
 interface FacebookPostNode {
   id: string;
   message?: string;
@@ -66,6 +68,7 @@ export interface FacebookTokenVerificationResult {
     belongsToApp: boolean;
     hasReadInsights: boolean;
     hasPagesReadEngagement: boolean;
+    hasPagesReadUserContent: boolean;
   };
   pageToken: {
     valid: boolean;
@@ -520,6 +523,7 @@ export class FacebookConnector implements PlatformConnector {
         belongsToApp: userDebug?.belongsToApp ?? false,
         hasReadInsights: userDebug?.scopes.includes("read_insights") ?? false,
         hasPagesReadEngagement: userDebug?.scopes.includes("pages_read_engagement") ?? false,
+        hasPagesReadUserContent: userDebug?.scopes.includes("pages_read_user_content") ?? false,
       },
       pageToken: {
         valid: pageDebug?.isValid ?? false,

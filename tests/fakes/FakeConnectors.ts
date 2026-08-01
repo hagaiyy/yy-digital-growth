@@ -228,7 +228,13 @@ export class FakeFacebookConnector {
   }
 
   tokenVerificationResult: FacebookTokenVerificationResult = {
-    userToken: { valid: true, belongsToApp: true, hasReadInsights: true, hasPagesReadEngagement: true },
+    userToken: {
+      valid: true,
+      belongsToApp: true,
+      hasReadInsights: true,
+      hasPagesReadEngagement: true,
+      hasPagesReadUserContent: true,
+    },
     pageToken: { valid: true, belongsToApp: true, belongsToExpectedPage: true },
     pageIdMatches: true,
   };

@@ -139,11 +139,11 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "likes.summary(true)",
       internalMetric: "likes",
       nativeUnit: "count",
-      status: "permissionRequired",
+      status: "untested",
       endpoint: POST_OBJECT_ENDPOINT,
-      requiredPermission: "pages_read_engagement",
+      requiredPermission: "pages_read_user_content",
       safeLimitation:
-        "Live production response (imagePost/linkPost, 2026-08-01): still rejected (OAuthException code=10) even with read_insights and pages_read_engagement both granted — this field needs pages_read_user_content, which this task explicitly forbids requesting. Video content types were not directly tested (no video content available), but this is a permission check, not a content-type check, so the same rejection is expected to generalize.",
+        "Confirmed rejected (OAuthException code=10, imagePost/linkPost, 2026-08-01) under pages_read_engagement + read_insights alone. pages_read_user_content is now Ready for testing and requested — re-tested live, not assumed to work just because the scope is now granted.",
     }),
   ),
   ...forEachContentType([...NON_VIDEO_CONTENT_TYPES, ...VIDEO_CONTENT_TYPES], (contentType) =>
@@ -152,11 +152,11 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "comments.summary(true)",
       internalMetric: "comments",
       nativeUnit: "count",
-      status: "permissionRequired",
+      status: "untested",
       endpoint: POST_OBJECT_ENDPOINT,
-      requiredPermission: "pages_read_engagement",
+      requiredPermission: "pages_read_user_content",
       safeLimitation:
-        "Live production response (imagePost/linkPost, 2026-08-01): still rejected (OAuthException code=10) even with read_insights and pages_read_engagement both granted — needs pages_read_user_content, which this task explicitly forbids requesting.",
+        "Confirmed rejected (OAuthException code=10, imagePost/linkPost, 2026-08-01) under pages_read_engagement + read_insights alone. pages_read_user_content is now Ready for testing and requested — re-tested live, not assumed to work just because the scope is now granted.",
     }),
   ),
   ...forEachContentType([...NON_VIDEO_CONTENT_TYPES, ...VIDEO_CONTENT_TYPES], (contentType) =>

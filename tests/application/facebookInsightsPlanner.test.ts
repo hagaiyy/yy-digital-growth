@@ -6,26 +6,27 @@ import {
   planFacebookPostInsightsRequest,
 } from "@/application/connectors/facebook/insightsRequestPlanner";
 
-const GRANTED = ["public_profile", "pages_show_list", "pages_read_engagement", "read_insights"];
+const GRANTED = [
+  "public_profile",
+  "pages_show_list",
+  "pages_read_engagement",
+  "pages_read_user_content",
+  "read_insights",
+];
 
-test("imagePost plan requests shares via the object endpoint, excludes likes/comments (confirmed permission gap), and requests distribution metrics via /insights", () => {
+test("imagePost plan requests likes/comments/shares via the object endpoint now that pages_read_user_content is granted, and distribution metrics via /insights", () => {
   const plan = planFacebookPostInsightsRequest({ contentType: "imagePost", grantedPermissions: GRANTED });
 
+  // likes.summary/comments.summary were confirmed rejected (OAuthException
+  // code=10) under pages_read_engagement + read_insights alone — now that
+  // pages_read_user_content is granted, the registry marks them
+  // "untested" again and the planner attempts them live rather than
+  // assuming the new scope alone makes them work.
   const objectFieldNames = plan.objectFieldMetrics.map((m) => m.providerMetric);
-  // likes.summary/comments.summary are confirmed (live production,
-  // 2026-08-01) to always reject with OAuthException code=10 even with
-  // read_insights + pages_read_engagement granted — they need
-  // pages_read_user_content, which this task forbids requesting, so the
-  // registry marks them permissionRequired and the planner excludes
-  // them outright rather than repeating a guaranteed-failing request.
-  assert.ok(!objectFieldNames.includes("likes.summary(true)"));
-  assert.ok(!objectFieldNames.includes("comments.summary(true)"));
+  assert.ok(objectFieldNames.includes("likes.summary(true)"));
+  assert.ok(objectFieldNames.includes("comments.summary(true)"));
   assert.ok(objectFieldNames.includes("shares"));
   assert.ok(plan.objectFieldMetrics.every((m) => m.endpoint === "/{post-id}"));
-
-  const excludedNames = plan.excludedMetrics.map((m) => m.providerMetric);
-  assert.ok(excludedNames.includes("likes.summary(true)"));
-  assert.ok(excludedNames.includes("comments.summary(true)"));
 
   const insightsNames = plan.insightsMetrics.map((m) => m.providerMetric);
   assert.ok(insightsNames.includes("post_clicks"));
@@ -68,14 +69,34 @@ test("reel gets the same video candidate set as feedVideo (no reliable way to di
   assert.deepEqual(reelMetrics, videoMetrics);
 });
 
-test("missing pages_read_engagement excludes engagement counters with reason permissionRequired", () => {
+test("missing pages_read_user_content excludes likes/comments specifically, with reason permissionRequired", () => {
   const plan = planFacebookPostInsightsRequest({
     contentType: "imagePost",
-    grantedPermissions: ["public_profile", "pages_show_list", "read_insights"],
+    grantedPermissions: ["public_profile", "pages_show_list", "pages_read_engagement", "read_insights"],
   });
-  assert.equal(plan.objectFieldMetrics.length, 0);
+  const objectFieldNames = plan.objectFieldMetrics.map((m) => m.providerMetric);
+  assert.ok(!objectFieldNames.includes("likes.summary(true)"));
+  assert.ok(!objectFieldNames.includes("comments.summary(true)"));
+  // shares only needs pages_read_engagement, which is still granted here.
+  assert.ok(objectFieldNames.includes("shares"));
+
   const excludedReasons = plan.excludedMetrics
     .filter((m) => m.providerMetric === "likes.summary(true)")
+    .map((m) => m.reason);
+  assert.deepEqual(excludedReasons, ["permissionRequired"]);
+});
+
+test("missing pages_read_engagement excludes shares specifically, with reason permissionRequired", () => {
+  const plan = planFacebookPostInsightsRequest({
+    contentType: "imagePost",
+    grantedPermissions: ["public_profile", "pages_show_list", "pages_read_user_content", "read_insights"],
+  });
+  const objectFieldNames = plan.objectFieldMetrics.map((m) => m.providerMetric);
+  assert.ok(!objectFieldNames.includes("shares"));
+  assert.ok(objectFieldNames.includes("likes.summary(true)"));
+
+  const excludedReasons = plan.excludedMetrics
+    .filter((m) => m.providerMetric === "shares")
     .map((m) => m.reason);
   assert.deepEqual(excludedReasons, ["permissionRequired"]);
 });
@@ -83,7 +104,7 @@ test("missing pages_read_engagement excludes engagement counters with reason per
 test("missing read_insights excludes every /insights candidate but not the object-field engagement counters", () => {
   const plan = planFacebookPostInsightsRequest({
     contentType: "imagePost",
-    grantedPermissions: ["public_profile", "pages_show_list", "pages_read_engagement"],
+    grantedPermissions: ["public_profile", "pages_show_list", "pages_read_engagement", "pages_read_user_content"],
   });
   assert.ok(plan.objectFieldMetrics.length > 0);
   assert.equal(plan.insightsMetrics.length, 0);
