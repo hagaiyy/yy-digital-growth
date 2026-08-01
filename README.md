@@ -112,12 +112,16 @@ Data Import introduces no new environment variables — it reuses each
 connection's already-stored, already-encrypted credential.
 
 > **Scope change for Data Import:** the Facebook OAuth scope gained
-> `pages_read_engagement` and `read_insights`, and the Pinterest OAuth
-> scope gained `pins:read`, so that Page posts, Pinterest Pins, and
-> their metrics can be read. A Facebook or Pinterest account connected
-> before this phase must be reconnected (Disconnect, then Connect
-> again) to pick up the wider scope — Instagram and existing connection
-> records are unaffected.
+> `pages_read_engagement`, and the Pinterest OAuth scope gained
+> `pins:read`, so that Page posts and Pinterest Pins can be read.
+> `read_insights` was also requested for a time so Page post metrics
+> could be read, but Meta rejects it for this app with "Invalid
+> Scopes"; it has been removed. Facebook's current scope is exactly
+> `public_profile,pages_show_list,pages_read_engagement`, and Page post
+> metrics report as unsupported rather than depending on it. A Facebook
+> or Pinterest account connected before this phase must be reconnected
+> (Disconnect, then Connect again) to pick up the wider scope —
+> Instagram and existing connection records are unaffected.
 
 > **Instagram now uses Instagram API with Instagram Login**, not
 > Facebook Login for Business. It authorizes directly against Instagram

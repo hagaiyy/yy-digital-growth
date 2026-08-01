@@ -105,15 +105,19 @@ Each platform has one isolated connector under
   the stored access token as a parameter, not reading from the
   environment.
 - **FacebookConnector**: authorization-code OAuth (`public_profile,
-  pages_show_list, pages_read_engagement, read_insights` scope — still
-  no publishing permission), identity lookup, and managed-Pages
-  discovery (`/me/accounts`). `pages_read_engagement`/`read_insights`
-  were added in the Data Import phase so Page posts and their insights
-  can be read (`fetchPageContent`/`fetchPagePostMetrics`); a Facebook
-  Account connected under the previous, narrower scope must be
-  reconnected. `fetchAccountContent()` never calls the Graph API at
-  all — it returns an `unsupported` result immediately, since the API
-  does not provide personal-profile content/analytics to standard apps.
+  pages_show_list, pages_read_engagement` scope — no publishing,
+  advertising, or unrelated permission). `pages_read_engagement` was
+  added in the Data Import phase so Page posts can be read
+  (`fetchPageContent`); a Facebook Account connected under the
+  previous, narrower scope must be reconnected. `read_insights` was
+  also requested for a time so Page post metrics could be read
+  (`fetchPagePostMetrics`), but Meta rejects it for this app with
+  "Invalid Scopes" and it has been removed — `fetchPagePostMetrics`
+  already degrades to an `unsupported` result when Facebook's `/insights`
+  endpoint rejects the request, so this has no other code impact.
+  `fetchAccountContent()` never calls the Graph API at all — it returns
+  an `unsupported` result immediately, since the API does not provide
+  personal-profile content/analytics to standard apps.
 - **PinterestConnector**: authorization-code OAuth
   (`user_accounts:read, pins:read` scope — `pins:read` added in the
   Data Import phase, requiring reconnection of any account connected

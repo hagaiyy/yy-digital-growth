@@ -5,12 +5,12 @@ import { isPlaceholderValue } from "@/config/localSetupVariables";
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
-// Read-only scope only: no publishing permission is requested.
-// `pages_read_engagement` and `read_insights` were added in the Data
-// Import phase so Page posts and their insights can be read; any
-// Facebook Account connected under the previous, narrower scope must be
-// reconnected to gain content-import permission.
-const OAUTH_SCOPE = "public_profile,pages_show_list,pages_read_engagement,read_insights";
+// Read-only scope only: no publishing, advertising, or unrelated
+// permission is requested. `read_insights` is deliberately not
+// requested — Meta rejects it for this app with "Invalid Scopes", and
+// Page post metrics already degrade to an "unsupported" result (see
+// fetchPagePostMetrics below) rather than depending on it.
+const OAUTH_SCOPE = "public_profile,pages_show_list,pages_read_engagement";
 
 interface FacebookPostNode {
   id: string;

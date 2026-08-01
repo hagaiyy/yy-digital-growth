@@ -118,6 +118,37 @@ test("FacebookConnector.buildAuthorizationUrl throws setupRequired naming the mi
   });
 });
 
+test("FacebookConnector.buildAuthorizationUrl produces a real facebook.com authorization URL requesting only the three required scopes, never read_insights", () => {
+  withEnv(
+    {
+      META_APP_ID: "configured-fb-app-id",
+      META_APP_SECRET: "configured-fb-app-secret",
+      META_REDIRECT_URI: "https://localhost:3000/api/connections/facebook/callback",
+    },
+    () => {
+      const connector = new FacebookConnector();
+      assert.equal(connector.isConfigured(), true);
+      const authUrl = connector.buildAuthorizationUrl("some-state");
+      const url = new URL(authUrl);
+      assert.equal(url.hostname, "www.facebook.com");
+      assert.equal(url.searchParams.get("client_id"), "configured-fb-app-id");
+      assert.equal(
+        url.searchParams.get("redirect_uri"),
+        "https://localhost:3000/api/connections/facebook/callback",
+      );
+      const scope = url.searchParams.get("scope") ?? "";
+      assert.equal(scope, "public_profile,pages_show_list,pages_read_engagement");
+      const requestedScopes = scope.split(",");
+      assert.ok(
+        !requestedScopes.includes("read_insights"),
+        "must not request read_insights — Meta rejects it for this app with Invalid Scopes",
+      );
+      assert.ok(!scope.includes("publish"));
+      assert.ok(!scope.includes("ads"));
+    },
+  );
+});
+
 test("PinterestConnector reports exactly which of its three env vars are missing", () => {
   withEnv(
     { PINTEREST_APP_ID: "id", PINTEREST_APP_SECRET: undefined, PINTEREST_REDIRECT_URI: undefined },

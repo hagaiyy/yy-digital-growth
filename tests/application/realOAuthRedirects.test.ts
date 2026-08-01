@@ -155,6 +155,10 @@ test("startFacebookAccountConnect returns a real facebook.com authorization URL 
         "http://localhost:3000/api/connections/facebook/callback",
       );
       assert.ok(url.searchParams.get("state"), "expected a non-empty CSRF state value");
+      const scope = url.searchParams.get("scope") ?? "";
+      assert.equal(scope, "public_profile,pages_show_list,pages_read_engagement");
+      const requestedScopes = scope.split(",");
+      assert.ok(!requestedScopes.includes("read_insights"), "must not request read_insights — Meta rejects it with Invalid Scopes");
       assert.ok(!url.searchParams.get("scope")?.includes("publish"), "must never request a publish permission");
     },
   );
