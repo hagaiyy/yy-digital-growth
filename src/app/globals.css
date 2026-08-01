@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: #0d0d0d;
+  color: #e6e6e6;
+  line-height: 1.5;
+}
+
+a {
+  color: #6ea8fe;
+}
+
+button {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #1c1c1c;
+  color: #e6e6e6;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: #6ea8fe;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+select {
+  font-family: inherit;
+  background: #1c1c1c;
+  color: #e6e6e6;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 0.3rem 0.5rem;
+}

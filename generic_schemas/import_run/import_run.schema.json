@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yy-digital-growth/schemas/import_run.v1.0.0.schema.json",
+  "title": "importRun",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "itemResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "status"],
+      "properties": {
+        "externalContentId": { "type": "string", "minLength": 1 },
+        "contentLabel": { "type": "string" },
+        "platform": { "type": "string", "enum": ["instagram", "facebook", "pinterest"] },
+        "status": {
+          "type": "string",
+          "enum": ["success", "partial", "failed", "skipped", "unsupported"]
+        },
+        "safeReasonCode": { "type": "string", "minLength": 1 },
+        "safeMessage": { "type": "string", "minLength": 1 }
+      }
+    },
+    "connectionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["connectionId", "platform", "status"],
+      "properties": {
+        "connectionId": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "enum": ["instagram", "facebook", "pinterest"] },
+        "status": {
+          "type": "string",
+          "enum": ["success", "partial", "failed", "skipped", "unsupported"]
+        },
+        "requestedCount": { "type": "integer", "minimum": 0 },
+        "createdCount": { "type": "integer", "minimum": 0 },
+        "updatedCount": { "type": "integer", "minimum": 0 },
+        "failedCount": { "type": "integer", "minimum": 0 },
+        "skippedCount": { "type": "integer", "minimum": 0 },
+        "safeErrorCode": { "type": "string", "minLength": 1 },
+        "safeErrorMessage": { "type": "string", "minLength": 1 },
+        "itemResults": { "type": "array", "items": { "$ref": "#/$defs/itemResult" } }
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "importRunId",
+    "status",
+    "startedAt",
+    "recentContentLimit",
+    "totals",
+    "connectionResults",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "importRunId": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["running", "completed", "completedWithErrors", "failed"]
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "recentContentLimit": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connections",
+        "requestedItems",
+        "createdItems",
+        "updatedItems",
+        "failedItems",
+        "skippedItems"
+      ],
+      "properties": {
+        "connections": { "type": "integer", "minimum": 0 },
+        "requestedItems": { "type": "integer", "minimum": 0 },
+        "createdItems": { "type": "integer", "minimum": 0 },
+        "updatedItems": { "type": "integer", "minimum": 0 },
+        "failedItems": { "type": "integer", "minimum": 0 },
+        "skippedItems": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "connectionResults": { "type": "array", "items": { "$ref": "#/$defs/connectionResult" } },
+    "safeErrorMessage": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

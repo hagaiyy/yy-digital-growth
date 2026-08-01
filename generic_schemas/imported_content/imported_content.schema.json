@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yy-digital-growth/schemas/imported_content.v1.0.0.schema.json",
+  "title": "importedContent",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "importedContentId",
+    "connectionId",
+    "platform",
+    "externalContentId",
+    "contentType",
+    "status",
+    "firstImportedAt",
+    "lastImportedAt",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "importedContentId": { "type": "string", "minLength": 1 },
+    "connectionId": { "type": "string", "minLength": 1 },
+    "platform": { "type": "string", "enum": ["instagram", "facebook", "pinterest"] },
+    "externalContentId": { "type": "string", "minLength": 1 },
+    "contentType": {
+      "type": "string",
+      "enum": ["reel", "story", "imagePost", "carousel", "video", "pin", "videoPin", "unknown"]
+    },
+    "status": { "type": "string", "enum": ["active", "unavailable", "archived"] },
+    "title": { "type": ["string", "null"] },
+    "caption": { "type": ["string", "null"] },
+    "hashtags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "permalink": { "type": ["string", "null"] },
+    "thumbnailUrl": { "type": ["string", "null"] },
+    "publishedAt": { "type": ["string", "null"], "format": "date-time" },
+    "platformData": { "type": "object" },
+    "firstImportedAt": { "type": "string", "format": "date-time" },
+    "lastImportedAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

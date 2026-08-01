@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yy-digital-growth/schemas/platform_connection.v1.0.0.schema.json",
+  "title": "platformConnection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "connectionId",
+    "platform",
+    "connectionTarget",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0.0"
+    },
+    "connectionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "type": "string",
+      "enum": ["instagram", "facebook", "pinterest"]
+    },
+    "connectionTarget": {
+      "type": "string",
+      "enum": ["account", "page"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "notConnected",
+        "setupRequired",
+        "connecting",
+        "connected",
+        "expired",
+        "failed"
+      ]
+    },
+    "externalAccountId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "accountType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "grantedScopes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "connectedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lastVerifiedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "safeErrorCode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "safeErrorMessage": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentConnectionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "connectionAttemptStartedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

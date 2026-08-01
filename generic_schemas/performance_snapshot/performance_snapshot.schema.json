@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yy-digital-growth/schemas/performance_snapshot.v1.0.0.schema.json",
+  "title": "performanceSnapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "performanceSnapshotId",
+    "importedContentId",
+    "connectionId",
+    "platform",
+    "snapshotHour",
+    "collectedAt",
+    "metrics",
+    "dataCompleteness",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "performanceSnapshotId": { "type": "string", "minLength": 1 },
+    "importedContentId": { "type": "string", "minLength": 1 },
+    "connectionId": { "type": "string", "minLength": 1 },
+    "platform": { "type": "string", "enum": ["instagram", "facebook", "pinterest"] },
+    "snapshotHour": { "type": "string", "format": "date-time" },
+    "collectedAt": { "type": "string", "format": "date-time" },
+    "metrics": { "type": "object" },
+    "dataCompleteness": { "type": "string", "enum": ["complete", "partial", "unavailable"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}

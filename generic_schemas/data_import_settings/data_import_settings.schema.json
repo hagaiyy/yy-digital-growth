@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yy-digital-growth/schemas/data_import_settings.v1.0.0.schema.json",
+  "title": "dataImportSettings",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "settingKey", "recentContentLimit", "createdAt", "updatedAt"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "settingKey": { "const": "dataImport" },
+    "recentContentLimit": { "type": "integer", "minimum": 1, "maximum": 100 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}
