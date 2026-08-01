@@ -13,6 +13,7 @@ import {
   InMemoryPlatformCredentialRepository,
 } from "../fakes/InMemoryRepositories";
 import {
+  InMemoryAccountPerformanceSnapshotRepository,
   InMemoryDataImportSettingsRepository,
   InMemoryImportedContentRepository,
   InMemoryImportRunRepository,
@@ -53,6 +54,7 @@ function buildEnvironment(nowValues?: string[]) {
 
   const importedContentRepository = new InMemoryImportedContentRepository();
   const performanceSnapshotRepository = new InMemoryPerformanceSnapshotRepository();
+  const accountPerformanceSnapshotRepository = new InMemoryAccountPerformanceSnapshotRepository();
   const importRunRepository = new InMemoryImportRunRepository();
   const settingsRepository = new InMemoryDataImportSettingsRepository();
 
@@ -65,6 +67,7 @@ function buildEnvironment(nowValues?: string[]) {
     connectionService,
     importedContentRepository,
     performanceSnapshotRepository,
+    accountPerformanceSnapshotRepository,
     importRunRepository,
     settingsRepository,
     instagramConnector,
@@ -79,6 +82,7 @@ function buildEnvironment(nowValues?: string[]) {
     credentialRepository,
     importedContentRepository,
     performanceSnapshotRepository,
+    accountPerformanceSnapshotRepository,
     importRunRepository,
     instagramConnector,
     facebookConnector,
@@ -410,6 +414,67 @@ test("no credentials appear anywhere in importedContent or performanceSnapshot r
         assert.ok(!serialized.includes(term.toLowerCase()), `importedContent must not contain "${term}"`);
       }
     }
+  });
+});
+
+// Part 6/13: account-level insights are a separate collection, never
+// mixed into content performanceSnapshots.
+test("Instagram account-level insights are persisted separately from content snapshots", async () => {
+  await withEncryptionKey(async () => {
+    const env = buildEnvironment();
+    await seedAllConnected(env);
+    env.instagramConnector.accountInsightsResult = [
+      {
+        period: "day",
+        since: "2026-07-25T00:00:00.000Z",
+        until: "2026-08-01T00:00:00.000Z",
+        completeness: "partial",
+        metrics: [
+          {
+            providerMetric: "reach",
+            internalMetric: "reach",
+            value: 5000,
+            nativeUnit: "count",
+            status: "supported",
+            period: "day",
+            sourceEndpoint: "/{ig-user-id}/insights",
+          },
+        ],
+      },
+    ];
+
+    await env.dataImportService.runImport();
+
+    assert.equal(env.instagramConnector.fetchAccountInsightsCallCount, 1);
+    const snapshots = await env.dataImportService.getLatestAccountPerformance(CONNECTION_IDS.instagram);
+    assert.equal(snapshots.length, 1);
+    assert.equal(snapshots[0]!.metrics[0]!.internalMetric, "reach");
+    assert.equal(snapshots[0]!.completeness, "partial");
+
+    const contentSnapshots = await env.performanceSnapshotRepository.findByImportedContentId(
+      (await env.importedContentRepository.list()).find((c) => c.platform === "instagram")!.importedContentId,
+    );
+    assert.ok(
+      contentSnapshots.every((s) => !("reach" in (s.metrics as Record<string, unknown>)) || s.metrics.reach !== 5000),
+      "the account-level reach value must never be mixed into a content snapshot",
+    );
+  });
+});
+
+test("an account-insights fetch failure never fails the Instagram connection or blocks content import", async () => {
+  await withEncryptionKey(async () => {
+    const env = buildEnvironment();
+    await seedAllConnected(env);
+    const originalFetch = env.instagramConnector.fetchAccountInsights.bind(env.instagramConnector);
+    env.instagramConnector.fetchAccountInsights = async () => {
+      throw new Error("simulated account-insights failure");
+    };
+
+    const run = await env.dataImportService.runImport();
+    const igResult = run.connectionResults.find((r) => r.connectionId === CONNECTION_IDS.instagram)!;
+
+    assert.equal(igResult.status, "success", "content items must still import successfully");
+    env.instagramConnector.fetchAccountInsights = originalFetch;
   });
 });
 

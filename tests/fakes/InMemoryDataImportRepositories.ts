@@ -15,6 +15,13 @@ import type {
   UpsertPerformanceSnapshotResult,
 } from "@/domain/repositories/PerformanceSnapshotRepository";
 
+import type { AccountPerformanceSnapshot } from "@/domain/models/AccountPerformanceSnapshot";
+import type {
+  AccountPerformanceSnapshotRepository,
+  UpsertAccountPerformanceSnapshotInput,
+  UpsertAccountPerformanceSnapshotResult,
+} from "@/domain/repositories/AccountPerformanceSnapshotRepository";
+
 import type { ImportRun } from "@/domain/models/ImportRun";
 import {
   RunningImportConflictError,
@@ -116,6 +123,11 @@ export class InMemoryPerformanceSnapshotRepository implements PerformanceSnapsho
         collectedAt: input.collectedAt,
         metrics: input.metrics,
         dataCompleteness: input.dataCompleteness,
+        accountType: input.accountType,
+        contentType: input.contentType,
+        providerMediaType: input.providerMediaType,
+        providerMediaProductType: input.providerMediaProductType,
+        metricRecords: input.metricRecords,
         updatedAt: now,
       };
       this.records.set(key, updated);
@@ -126,6 +138,62 @@ export class InMemoryPerformanceSnapshotRepository implements PerformanceSnapsho
       ...input,
       schemaVersion: "1.0.0",
       performanceSnapshotId: `performance_snapshot_${randomUUID()}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.records.set(key, created);
+    return { record: created, created: true };
+  }
+}
+
+export class InMemoryAccountPerformanceSnapshotRepository implements AccountPerformanceSnapshotRepository {
+  private readonly records = new Map<string, AccountPerformanceSnapshot>();
+
+  private key(connectionId: string, snapshotHour: string, period: string, since?: string, until?: string, timeframe?: string): string {
+    return `${connectionId}::${snapshotHour}::${period}::${since ?? ""}::${until ?? ""}::${timeframe ?? ""}`;
+  }
+
+  async findByConnectionId(connectionId: string): Promise<AccountPerformanceSnapshot[]> {
+    return Array.from(this.records.values())
+      .filter((r) => r.connectionId === connectionId)
+      .sort((a, b) => (a.snapshotHour < b.snapshotHour ? 1 : -1));
+  }
+
+  async findLatestByConnectionId(connectionId: string): Promise<AccountPerformanceSnapshot[]> {
+    const all = await this.findByConnectionId(connectionId);
+    const latestByGroup = new Map<string, AccountPerformanceSnapshot>();
+    for (const snapshot of all) {
+      const groupKey = `${snapshot.period}::${snapshot.since ?? ""}::${snapshot.until ?? ""}::${snapshot.timeframe ?? ""}`;
+      if (!latestByGroup.has(groupKey)) latestByGroup.set(groupKey, snapshot);
+    }
+    return Array.from(latestByGroup.values());
+  }
+
+  async upsertByHour(
+    input: UpsertAccountPerformanceSnapshotInput,
+  ): Promise<UpsertAccountPerformanceSnapshotResult> {
+    const now = new Date().toISOString();
+    const key = this.key(input.connectionId, input.snapshotHour, input.period, input.since, input.until, input.timeframe);
+    const existing = this.records.get(key);
+
+    if (existing) {
+      const updated: AccountPerformanceSnapshot = {
+        ...existing,
+        platform: input.platform,
+        accountType: input.accountType,
+        collectedAt: input.collectedAt,
+        completeness: input.completeness,
+        metrics: input.metrics,
+        updatedAt: now,
+      };
+      this.records.set(key, updated);
+      return { record: updated, created: false };
+    }
+
+    const created: AccountPerformanceSnapshot = {
+      ...input,
+      schemaVersion: "1.0.0",
+      accountPerformanceSnapshotId: `account_performance_snapshot_${randomUUID()}`,
       createdAt: now,
       updatedAt: now,
     };

@@ -21,6 +21,18 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await db.collection("performanceSnapshots").createIndex({ platform: 1 });
   await db.collection("performanceSnapshots").createIndex({ collectedAt: 1 });
 
+  // Account-level insights are never mixed into a content
+  // performanceSnapshot — one row per connectionId + snapshotHour +
+  // period + (since/until or timeframe), since Meta's account metrics
+  // describe the whole account, not one piece of content.
+  await db.collection("accountPerformanceSnapshots").createIndex(
+    { connectionId: 1, snapshotHour: 1, period: 1, since: 1, until: 1, timeframe: 1 },
+    { unique: true },
+  );
+  await db.collection("accountPerformanceSnapshots").createIndex({ connectionId: 1 });
+  await db.collection("accountPerformanceSnapshots").createIndex({ platform: 1 });
+  await db.collection("accountPerformanceSnapshots").createIndex({ collectedAt: 1 });
+
   await db.collection("importRuns").createIndex({ importRunId: 1 }, { unique: true });
   await db.collection("importRuns").createIndex({ startedAt: 1 });
   await db.collection("importRuns").createIndex({ status: 1 });

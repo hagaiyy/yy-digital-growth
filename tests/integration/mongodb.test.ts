@@ -7,6 +7,7 @@ import { MongoPlatformConnectionRepository } from "@/infrastructure/mongodb/repo
 import { MongoPlatformCredentialRepository } from "@/infrastructure/mongodb/repositories/MongoPlatformCredentialRepository";
 import { MongoImportedContentRepository } from "@/infrastructure/mongodb/repositories/MongoImportedContentRepository";
 import { MongoPerformanceSnapshotRepository } from "@/infrastructure/mongodb/repositories/MongoPerformanceSnapshotRepository";
+import { MongoAccountPerformanceSnapshotRepository } from "@/infrastructure/mongodb/repositories/MongoAccountPerformanceSnapshotRepository";
 import { MongoImportRunRepository } from "@/infrastructure/mongodb/repositories/MongoImportRunRepository";
 import { MongoDataImportSettingsRepository } from "@/infrastructure/mongodb/repositories/MongoDataImportSettingsRepository";
 import { RunningImportConflictError } from "@/domain/repositories/ImportRunRepository";
@@ -367,6 +368,7 @@ test("DataImportService lists imported content from MongoDB, not from any in-pro
       }),
       importedContentRepository: contentRepo,
       performanceSnapshotRepository: new MongoPerformanceSnapshotRepository(db),
+      accountPerformanceSnapshotRepository: new MongoAccountPerformanceSnapshotRepository(db),
       importRunRepository: new MongoImportRunRepository(db),
       settingsRepository: new MongoDataImportSettingsRepository(db),
       instagramConnector: new FakeInstagramConnector(),

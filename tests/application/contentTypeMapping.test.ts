@@ -23,6 +23,10 @@ test("maps Instagram image to imagePost", () => {
   assert.equal(mapInstagramContentType("IMAGE", "FEED"), "imagePost");
 });
 
+test("maps a plain Instagram feed VIDEO to feedVideo, not reel", () => {
+  assert.equal(mapInstagramContentType("VIDEO", "FEED"), "feedVideo");
+});
+
 test("does not guess an unrecognized Instagram media type", () => {
   assert.equal(mapInstagramContentType("AUDIO", undefined), "unknown");
   assert.equal(mapInstagramContentType(undefined, undefined), "unknown");

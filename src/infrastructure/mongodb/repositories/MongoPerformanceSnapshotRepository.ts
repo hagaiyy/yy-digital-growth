@@ -37,6 +37,24 @@ export class MongoPerformanceSnapshotRepository implements PerformanceSnapshotRe
     const now = new Date().toISOString();
     const newId = `performance_snapshot_${randomUUID()}`;
 
+    // Built explicitly (not spread) so an absent optional field is never
+    // written as an explicit `null`/`undefined` — Facebook and Pinterest
+    // snapshots, which never set these, keep the exact same document
+    // shape they always have.
+    const optionalFields: Partial<
+      Pick<
+        typeof input,
+        "accountType" | "contentType" | "providerMediaType" | "providerMediaProductType" | "metricRecords"
+      >
+    > = {};
+    if (input.accountType !== undefined) optionalFields.accountType = input.accountType;
+    if (input.contentType !== undefined) optionalFields.contentType = input.contentType;
+    if (input.providerMediaType !== undefined) optionalFields.providerMediaType = input.providerMediaType;
+    if (input.providerMediaProductType !== undefined) {
+      optionalFields.providerMediaProductType = input.providerMediaProductType;
+    }
+    if (input.metricRecords !== undefined) optionalFields.metricRecords = input.metricRecords;
+
     const record = await this.collection.findOneAndUpdate(
       { importedContentId: input.importedContentId, snapshotHour: input.snapshotHour },
       {
@@ -47,6 +65,7 @@ export class MongoPerformanceSnapshotRepository implements PerformanceSnapshotRe
           metrics: input.metrics,
           dataCompleteness: input.dataCompleteness,
           updatedAt: now,
+          ...optionalFields,
         },
         $setOnInsert: {
           schemaVersion: "1.0.0",

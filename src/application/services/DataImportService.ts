@@ -8,11 +8,13 @@ import {
 } from "@/domain/models/DataImportSettings";
 import type { ImportedContent } from "@/domain/models/ImportedContent";
 import type { PerformanceSnapshot } from "@/domain/models/PerformanceSnapshot";
+import type { AccountPerformanceSnapshot } from "@/domain/models/AccountPerformanceSnapshot";
 import type { ConnectionResult, ImportRun, ItemResultStatus } from "@/domain/models/ImportRun";
 import { isEligibleDataImportSource, type PlatformConnection } from "@/domain/models/PlatformConnection";
 
 import type { ImportedContentRepository } from "@/domain/repositories/ImportedContentRepository";
 import type { PerformanceSnapshotRepository } from "@/domain/repositories/PerformanceSnapshotRepository";
+import type { AccountPerformanceSnapshotRepository } from "@/domain/repositories/AccountPerformanceSnapshotRepository";
 import { RunningImportConflictError, type ImportRunRepository } from "@/domain/repositories/ImportRunRepository";
 import type { DataImportSettingsRepository } from "@/domain/repositories/DataImportSettingsRepository";
 
@@ -127,6 +129,7 @@ export interface DataImportServiceDependencies {
   connectionService: ConnectionService;
   importedContentRepository: ImportedContentRepository;
   performanceSnapshotRepository: PerformanceSnapshotRepository;
+  accountPerformanceSnapshotRepository: AccountPerformanceSnapshotRepository;
   importRunRepository: ImportRunRepository;
   settingsRepository: DataImportSettingsRepository;
   instagramConnector: InstagramConnector;
@@ -139,6 +142,7 @@ export class DataImportService {
   private readonly connectionService: ConnectionService;
   private readonly importedContentRepository: ImportedContentRepository;
   private readonly performanceSnapshotRepository: PerformanceSnapshotRepository;
+  private readonly accountPerformanceSnapshotRepository: AccountPerformanceSnapshotRepository;
   private readonly importRunRepository: ImportRunRepository;
   private readonly settingsRepository: DataImportSettingsRepository;
   private readonly instagramConnector: InstagramConnector;
@@ -150,6 +154,7 @@ export class DataImportService {
     this.connectionService = deps.connectionService;
     this.importedContentRepository = deps.importedContentRepository;
     this.performanceSnapshotRepository = deps.performanceSnapshotRepository;
+    this.accountPerformanceSnapshotRepository = deps.accountPerformanceSnapshotRepository;
     this.importRunRepository = deps.importRunRepository;
     this.settingsRepository = deps.settingsRepository;
     this.instagramConnector = deps.instagramConnector;
@@ -218,6 +223,17 @@ export class DataImportService {
     return this.performanceSnapshotRepository.findByImportedContentId(importedContentId);
   }
 
+  // One or more rows per connection — account-level insights are
+  // grouped by Meta request-parameter shape (see
+  // planInstagramAccountInsightsRequest), never a single flat record.
+  async getLatestAccountPerformance(connectionId: string): Promise<AccountPerformanceSnapshot[]> {
+    return this.accountPerformanceSnapshotRepository.findLatestByConnectionId(connectionId);
+  }
+
+  async getAccountPerformanceHistory(connectionId: string): Promise<AccountPerformanceSnapshot[]> {
+    return this.accountPerformanceSnapshotRepository.findByConnectionId(connectionId);
+  }
+
   private isStale(run: ImportRun): boolean {
     return Date.now() - Date.parse(run.startedAt) > STALE_RUNNING_THRESHOLD_MS;
   }
@@ -262,6 +278,22 @@ export class DataImportService {
     const metricsOutcome = await fetchMetrics(record.importedContentId);
     const snapshotHour = truncateToHourIso(this.now());
 
+    // The additive Instagram-only snapshot fields (accountType,
+    // contentType, providerMediaType, providerMediaProductType,
+    // metricRecords) are gated on platform explicitly, not on whether
+    // the outcome happens to carry them — Facebook's and Pinterest's
+    // snapshot documents must keep the exact shape they always had.
+    const instagramFields =
+      connection.platform === "instagram" && metricsOutcome.kind !== "failed"
+        ? {
+            accountType: metricsOutcome.accountType,
+            contentType: item.contentType,
+            providerMediaType: metricsOutcome.providerMediaType,
+            providerMediaProductType: metricsOutcome.providerMediaProductType,
+            metricRecords: metricsOutcome.metricRecords,
+          }
+        : {};
+
     if (metricsOutcome.kind === "success") {
       await this.performanceSnapshotRepository.upsertByHour({
         schemaVersion: "1.0.0",
@@ -272,6 +304,7 @@ export class DataImportService {
         collectedAt: this.now(),
         metrics: metricsOutcome.metrics,
         dataCompleteness: metricsOutcome.dataCompleteness,
+        ...instagramFields,
       });
       const partial = metricsOutcome.dataCompleteness === "partial";
       return {
@@ -296,7 +329,8 @@ export class DataImportService {
         snapshotHour,
         collectedAt: this.now(),
         metrics: {},
-        dataCompleteness: "unavailable",
+        dataCompleteness: metricsOutcome.dataCompleteness ?? "unavailable",
+        ...instagramFields,
       });
       return {
         externalContentId: item.externalContentId,
@@ -351,12 +385,59 @@ export class DataImportService {
           {
             likeCount: item.platformData.like_count as number | undefined,
             commentsCount: item.platformData.comments_count as number | undefined,
+            rawAccountType: connection.accountType,
+            providerMediaType: item.platformData.media_type as string | undefined,
+            providerMediaProductType: item.platformData.media_product_type as string | undefined,
           },
         ),
       ),
     );
 
+    // Account-level insights are fetched and persisted independently of
+    // content import — a failure here (or the account request itself
+    // failing entirely) must never fail the connection or block the
+    // content items already imported above.
+    await this.importInstagramAccountInsights(connection, accessToken, accountId);
+
     return buildConnectionResult(connection, outcomes);
+  }
+
+  private async importInstagramAccountInsights(
+    connection: PlatformConnection,
+    accessToken: string,
+    accountId: string,
+  ): Promise<void> {
+    let groups: Awaited<ReturnType<InstagramConnector["fetchAccountInsights"]>>;
+    try {
+      groups = await this.instagramConnector.fetchAccountInsights(accessToken, accountId, connection.accountType);
+    } catch {
+      // Never propagate — account insights are a separate, best-effort
+      // addition to the content import that just happened.
+      return;
+    }
+
+    const snapshotHour = truncateToHourIso(this.now());
+    for (const group of groups) {
+      try {
+        await this.accountPerformanceSnapshotRepository.upsertByHour({
+          schemaVersion: "1.0.0",
+          connectionId: connection.connectionId,
+          platform: connection.platform,
+          accountType: connection.accountType,
+          snapshotHour,
+          collectedAt: this.now(),
+          period: group.period,
+          since: group.since,
+          until: group.until,
+          timeframe: group.timeframe,
+          completeness: group.completeness,
+          metrics: group.metrics,
+        });
+      } catch {
+        // One group's write failing must not stop the others.
+        continue;
+      }
+    }
   }
 
   private async importFacebookPage(

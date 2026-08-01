@@ -1,5 +1,8 @@
 import type { Platform } from "@/domain/models/PlatformConnection";
 import type { ContentType } from "@/domain/models/ImportedContent";
+import type { MetricRecord } from "@/domain/models/PerformanceSnapshot";
+
+export type { MetricRecord, MetricRecordStatus } from "@/domain/models/PerformanceSnapshot";
 
 // Thrown by connectors instead of letting a raw fetch/API error escape.
 // `safeMessage` must never contain tokens, secrets, request URLs, or any
@@ -89,6 +92,10 @@ export async function extractMetaSafeError(response: Response): Promise<MetaSafe
 
 // A metrics request is always per-metric now — one rejected metric can
 // never erase the others fetched alongside it (see MetricFailure above).
+// `metricRecords`/`accountType`/`providerMediaType`/`providerMediaProductType`
+// are optional additive fields: only Instagram's connector populates them
+// today (see InstagramConnector.fetchContentMetrics), so Facebook's and
+// Pinterest's existing MetricsFetchOutcome producers need no change.
 export type MetricsFetchOutcome =
   | {
       // At least one requested metric returned a real value.
@@ -97,13 +104,27 @@ export type MetricsFetchOutcome =
       successfulMetrics: string[];
       failedMetrics: MetricFailure[];
       dataCompleteness: "complete" | "partial";
+      metricRecords?: MetricRecord[];
+      accountType?: string;
+      providerMediaType?: string;
+      providerMediaProductType?: string;
     }
   | {
       // Every requested metric was rejected or does not apply — the
       // content itself is still valid and already saved by the caller.
+      // `dataCompleteness` defaults to "unavailable" (a real attempt was
+      // made and nothing came back); a connector sets it to "untested"
+      // only when there was nothing safe to attempt at all — e.g. a
+      // content type with no live-verified or documented candidate
+      // metric yet, distinct from metrics that were tried and rejected.
       kind: "unsupported";
       failedMetrics: MetricFailure[];
       safeMessage: string;
+      dataCompleteness?: "unavailable" | "untested";
+      metricRecords?: MetricRecord[];
+      accountType?: string;
+      providerMediaType?: string;
+      providerMediaProductType?: string;
     }
   | {
       // The metrics attempt itself could not be made at all (e.g. an

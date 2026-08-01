@@ -1,5 +1,5 @@
 import type { FacebookManagedPage } from "@/application/connectors/FacebookConnector";
-import type { InstagramTokenSet } from "@/application/connectors/InstagramConnector";
+import type { AccountInsightsGroupResult, InstagramTokenSet } from "@/application/connectors/InstagramConnector";
 import type { PinterestTokenSet } from "@/application/connectors/PinterestConnector";
 import {
   ConnectorError,
@@ -57,6 +57,9 @@ export class FakeInstagramConnector {
   metricsOutcomeFor: (externalContentId: string) => MetricsFetchOutcome = () => DEFAULT_METRICS_OUTCOME;
   fetchRecentContentCallCount = 0;
 
+  accountInsightsResult: AccountInsightsGroupResult[] = [];
+  fetchAccountInsightsCallCount = 0;
+
   isConfigured(): boolean {
     return this.configured;
   }
@@ -100,9 +103,18 @@ export class FakeInstagramConnector {
     _accessToken: string,
     externalContentId: string,
     _contentType: ContentType,
-    _knownEngagement: { likeCount?: number; commentsCount?: number },
+    _context: { likeCount?: number; commentsCount?: number },
   ): Promise<MetricsFetchOutcome> {
     return this.metricsOutcomeFor(externalContentId);
+  }
+
+  async fetchAccountInsights(
+    _accessToken: string,
+    _accountId: string,
+    _rawAccountType: string | undefined,
+  ): Promise<AccountInsightsGroupResult[]> {
+    this.fetchAccountInsightsCallCount += 1;
+    return this.accountInsightsResult;
   }
 }
 

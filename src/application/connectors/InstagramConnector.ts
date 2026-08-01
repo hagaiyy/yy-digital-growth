@@ -1,6 +1,7 @@
 import type {
   MetaSafeError,
   MetricFailureReason,
+  MetricRecord,
   MetricsFetchOutcome,
   PlatformConnector,
   RecentContentItem,
@@ -10,6 +11,15 @@ import { ConnectorError, extractMetaSafeError } from "./types";
 import { mapInstagramContentType } from "@/application/mapping/contentTypeMapping";
 import { isPlaceholderValue } from "@/config/localSetupVariables";
 import type { ContentType } from "@/domain/models/ImportedContent";
+import type { DataCompleteness, MetricRecordStatus } from "@/domain/models/PerformanceSnapshot";
+import type { AccountMetricRecord } from "@/domain/models/AccountPerformanceSnapshot";
+import { normalizeInstagramAccountType } from "./instagram/accountType";
+import {
+  planInstagramAccountInsightsRequest,
+  planInstagramMediaInsightsRequest,
+  type AccountInsightsRequestGroup,
+  type PlannedMetric,
+} from "./instagram/insightsRequestPlanner";
 
 // Instagram API with Instagram Login: the Instagram professional account
 // authorizes directly against Instagram's own OAuth endpoints using the
@@ -41,82 +51,16 @@ interface InstagramMediaNode {
   timestamp?: string;
   like_count?: number;
   comments_count?: number;
+  // Only meaningful for CAROUSEL_ALBUM content. Child media never gets
+  // its own insights request or performance snapshot — Meta does not
+  // expose meaningful child-level insights for carousel items, so only
+  // the metadata is preserved on the parent content record.
+  children?: { data?: Array<{ id: string; media_type?: string }> };
 }
 
 export interface InstagramTokenSet {
   accessToken: string;
   expiresAt?: string;
-}
-
-// Built from a live production diagnostic against real content of each
-// type, not from documentation alone. `impressions` and `plays` were
-// confirmed rejected (IGApiException code=100, "invalid for this
-// content's type") for every real reel and feed item tested, and are
-// deliberately excluded rather than requested and discarded on every
-// import. `views` is the metric Meta's newer API versions use in their
-// place; requested speculatively since it degrades safely if wrong
-// (fetchContentMetrics tries the whole list together first, and only
-// bisects metric-by-metric if something in it is rejected — one bad
-// metric name can never erase the others). `likes`/`comments` are
-// deliberately not requested here — they are already available for free
-// from content discovery's like_count/comments_count fields.
-function metricCandidatesFor(contentType: ContentType): string[] {
-  switch (contentType) {
-    case "reel":
-      return [
-        "views",
-        "reach",
-        "saved",
-        "shares",
-        "total_interactions",
-        "ig_reels_avg_watch_time",
-        "ig_reels_video_view_total_time",
-      ];
-    case "video":
-    case "imagePost":
-    case "carousel":
-      return ["views", "reach", "saved", "shares", "total_interactions", "follows", "profile_activity"];
-    case "story":
-      // No live story was available to test against at the time this
-      // was written — these are Meta's documented story-insight metric
-      // names, and fetchContentMetrics verifies each one live rather
-      // than assuming support.
-      return ["reach", "exits", "replies", "taps_forward", "taps_back", "navigation"];
-    default:
-      return ["reach", "saved", "shares", "total_interactions"];
-  }
-}
-
-const METRIC_OUTPUT_NAMES: Record<string, string> = {
-  views: "views",
-  reach: "reach",
-  saved: "saves",
-  shares: "shares",
-  total_interactions: "engagements",
-  ig_reels_avg_watch_time: "averageWatchTimeMs",
-  ig_reels_video_view_total_time: "totalWatchTimeMs",
-  follows: "follows",
-  profile_activity: "profileActivity",
-  exits: "exits",
-  replies: "replies",
-  taps_forward: "tapsForward",
-  taps_back: "tapsBack",
-  navigation: "navigation",
-};
-
-function outputNameFor(metric: string): string {
-  return METRIC_OUTPUT_NAMES[metric] ?? metric;
-}
-
-// Live production data disproved the original assumption here: a reel
-// with 609 real views returning a raw ig_reels_avg_watch_time of 10465
-// would be ~174 minutes of average watch time if treated as seconds —
-// impossible for a short-form Reel. Meta already returns these two
-// watch-time metrics in milliseconds; the value is stored as-is, with no
-// unit conversion, and the ~9-10s figures that result are consistent
-// with real Reel-length viewing behavior.
-function normalizeMetricValue(_metric: string, value: number): number {
-  return value;
 }
 
 // Classification is based on what was actually observed live: every
@@ -132,6 +76,26 @@ function classifyInstagramMetricFailure(error: MetaSafeError | null): MetricFail
   if (error.code === 10) return "permissionMissing";
   if (error.code === 100) return "invalidMetricForContentType";
   return "requestRejected";
+}
+
+// MetricFailureReason (used by the DataImportService-facing
+// MetricsFetchOutcome) and MetricRecordStatus (used by the structured,
+// persisted MetricRecord) are two different closed vocabularies for the
+// same underlying facts — this is the one place they're reconciled.
+function toMetricRecordStatus(reason: MetricFailureReason): MetricRecordStatus {
+  switch (reason) {
+    case "metricUnsupported":
+      return "empty";
+    case "permissionMissing":
+      return "permissionRequired";
+    case "invalidMetricForContentType":
+      return "invalidForContentType";
+    case "tokenInvalid":
+    case "providerError":
+      return "providerError";
+    case "requestRejected":
+      return "unsupported";
+  }
 }
 
 function getConfig() {
@@ -205,6 +169,84 @@ async function requestInsights(
   for (const entry of body.data ?? []) {
     const value = entry.values?.[0]?.value;
     if (typeof value === "number") values.set(entry.name, value);
+  }
+  return { ok: true, values };
+}
+
+// Account-level insights (metric_type=total_value) return a completely
+// different shape from media insights' `values` time series: a single
+// scalar (`total_value.value`) for a plain aggregate, or a breakdown
+// array (`total_value.breakdowns[].results[]`) for demographic metrics
+// requested with a `breakdown` parameter — one result per dimension
+// bucket (e.g. one per age range). Both are parsed here into one
+// consistent per-metric-name list of {value, dimension?} entries so the
+// caller can build AccountMetricRecords without caring which shape a
+// given metric used.
+interface AccountInsightsValueEntry {
+  value: number;
+  dimensionLabel?: string;
+}
+
+async function requestAccountInsights(
+  accountId: string,
+  accessToken: string,
+  metricNames: string[],
+  params: { period: string; since?: number; until?: number; breakdown?: string; timeframe?: string },
+): Promise<
+  | { ok: true; values: Map<string, AccountInsightsValueEntry[]> }
+  | { ok: false; error: MetaSafeError | null }
+> {
+  const url = new URL(`${GRAPH_API_BASE}/${accountId}/insights`);
+  url.searchParams.set("metric", metricNames.join(","));
+  url.searchParams.set("period", params.period);
+  url.searchParams.set("metric_type", "total_value");
+  if (params.since !== undefined) url.searchParams.set("since", String(params.since));
+  if (params.until !== undefined) url.searchParams.set("until", String(params.until));
+  if (params.breakdown) url.searchParams.set("breakdown", params.breakdown);
+  if (params.timeframe) url.searchParams.set("timeframe", params.timeframe);
+  url.searchParams.set("access_token", accessToken);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { method: "GET" });
+  } catch {
+    return { ok: false, error: null };
+  }
+  if (!response.ok) {
+    return { ok: false, error: await extractMetaSafeError(response) };
+  }
+  let body: {
+    data?: Array<{
+      name: string;
+      total_value?: {
+        value?: number;
+        breakdowns?: Array<{
+          results?: Array<{ dimension_values?: string[]; value?: number }>;
+        }>;
+      };
+    }>;
+  };
+  try {
+    body = (await response.json()) as typeof body;
+  } catch {
+    return { ok: false, error: null };
+  }
+
+  const values = new Map<string, AccountInsightsValueEntry[]>();
+  for (const entry of body.data ?? []) {
+    if (typeof entry.total_value?.value === "number") {
+      values.set(entry.name, [{ value: entry.total_value.value }]);
+      continue;
+    }
+    const results = entry.total_value?.breakdowns?.[0]?.results ?? [];
+    const entries: AccountInsightsValueEntry[] = results
+      .filter((result): result is { dimension_values?: string[]; value: number } => typeof result.value === "number")
+      .map((result) => ({ value: result.value, dimensionLabel: result.dimension_values?.join("/") }));
+    // Present in the response with zero breakdown results — Meta
+    // returned the metric but had nothing to report for it (e.g. a
+    // demographic metric below its documented reporting threshold),
+    // never converted to a fabricated zero.
+    values.set(entry.name, entries);
   }
   return { ok: true, values };
 }
@@ -364,7 +406,7 @@ export class InstagramConnector implements PlatformConnector {
     const url = new URL(`${GRAPH_API_BASE}/${accountId}/media`);
     url.searchParams.set(
       "fields",
-      "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count",
+      "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count,children{id,media_type}",
     );
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("access_token", accessToken);
@@ -386,83 +428,168 @@ export class InstagramConnector implements PlatformConnector {
       throw new ConnectorError("failed", "Instagram returned an unexpected response.");
     }
 
-    return (body.data ?? []).map((node) => ({
-      externalContentId: node.id,
-      contentType: mapInstagramContentType(node.media_type, node.media_product_type),
-      caption: node.caption ?? null,
-      permalink: node.permalink ?? null,
-      thumbnailUrl: node.thumbnail_url ?? node.media_url ?? null,
-      publishedAt: node.timestamp ?? null,
-      platformData: {
-        media_type: node.media_type,
-        media_product_type: node.media_product_type,
-        like_count: node.like_count,
-        comments_count: node.comments_count,
-      },
-    }));
+    return (body.data ?? []).map((node) => {
+      // Provider values are always persisted alongside the internal
+      // classification — classification uses both media_type and
+      // media_product_type together, never media_type alone (see
+      // mapInstagramContentType).
+      const children = node.children?.data?.map((child) => ({
+        id: child.id,
+        mediaType: child.media_type,
+      }));
+      return {
+        externalContentId: node.id,
+        contentType: mapInstagramContentType(node.media_type, node.media_product_type),
+        caption: node.caption ?? null,
+        permalink: node.permalink ?? null,
+        thumbnailUrl: node.thumbnail_url ?? node.media_url ?? null,
+        publishedAt: node.timestamp ?? null,
+        platformData: {
+          media_type: node.media_type,
+          media_product_type: node.media_product_type,
+          like_count: node.like_count,
+          comments_count: node.comments_count,
+          ...(children && children.length > 0 ? { children } : {}),
+        },
+      };
+    });
   }
 
-  // Per-metric outcomes, never all-or-nothing: the full candidate list
-  // for this content type is requested together first (one request, the
-  // common case whenever every candidate genuinely applies); only if
-  // that combined request is rejected does this fall back to requesting
-  // each metric individually, so a single invalid-for-this-type or
-  // otherwise rejected metric can never erase the others.
+  // Every metric this connector requests for a piece of content is
+  // decided by planInstagramMediaInsightsRequest against the metric
+  // capability registry — never one universal list applied to every
+  // media type. Within the metrics the planner says to attempt, outcomes
+  // are still per-metric, never all-or-nothing: the planned list is
+  // requested together first (one request, the common case whenever
+  // every candidate genuinely applies); only if that combined request is
+  // rejected does this fall back to requesting each metric individually,
+  // so a single invalid-for-this-type or otherwise rejected metric can
+  // never erase the others.
   async fetchContentMetrics(
     accessToken: string,
     externalContentId: string,
     contentType: ContentType,
-    knownEngagement: { likeCount?: number; commentsCount?: number },
+    context: {
+      likeCount?: number;
+      commentsCount?: number;
+      rawAccountType?: string;
+      providerMediaType?: string;
+      providerMediaProductType?: string;
+    },
   ): Promise<MetricsFetchOutcome> {
+    const accountType = normalizeInstagramAccountType(context.rawAccountType);
+    const plan = planInstagramMediaInsightsRequest({
+      accountType,
+      contentType,
+      grantedPermissions: OAUTH_SCOPE.split(","),
+    });
+
     const metrics: Record<string, number | string | null> = {};
     const successfulMetrics: string[] = [];
     const failedMetrics: { metric: string; reason: MetricFailureReason }[] = [];
+    const metricRecords: MetricRecord[] = [];
+    // Completeness is judged only against the "expected" set: metrics
+    // the registry already marks "supported" from prior live evidence.
+    // A metric the registry already knows is invalid for this content
+    // type (e.g. impressions for a reel) was never expected to succeed,
+    // and an "untested" candidate is a speculative discovery attempt,
+    // not something whose absence should ever keep an otherwise-solid
+    // reel from reaching "complete" — only a previously-confirmed metric
+    // actually failing counts as a real regression.
+    let attemptedFailureCount = 0;
 
-    // Already known for free from content discovery — never re-requested.
-    if (typeof knownEngagement.likeCount === "number") {
-      metrics.likes = knownEngagement.likeCount;
-      successfulMetrics.push("likes");
+    const record = (planned: PlannedMetric, value: number | undefined, error: MetaSafeError | null | undefined) => {
+      if (typeof value === "number") {
+        successfulMetrics.push(planned.internalMetric);
+        metrics[planned.internalMetric] = value;
+        metricRecords.push({
+          providerMetric: planned.providerMetric,
+          internalMetric: planned.internalMetric,
+          value,
+          nativeUnit: planned.nativeUnit,
+          status: "supported",
+          period: planned.period,
+          sourceEndpoint: planned.endpoint,
+        });
+        return;
+      }
+      const reason: MetricFailureReason = error ? classifyInstagramMetricFailure(error) : "metricUnsupported";
+      if (planned.status === "supported") attemptedFailureCount += 1;
+      failedMetrics.push({ metric: planned.internalMetric, reason });
+      metricRecords.push({
+        providerMetric: planned.providerMetric,
+        internalMetric: planned.internalMetric,
+        value: null,
+        nativeUnit: planned.nativeUnit,
+        status: toMetricRecordStatus(reason),
+        period: planned.period,
+        sourceEndpoint: planned.endpoint,
+        safeReasonCode: reason,
+      });
+    };
+
+    // Free metrics from content discovery — never re-requested.
+    for (const planned of plan.freeMetricsFromDiscovery) {
+      const value = planned.providerMetric === "like_count" ? context.likeCount : context.commentsCount;
+      record(planned, value, null);
     }
-    if (typeof knownEngagement.commentsCount === "number") {
-      metrics.comments = knownEngagement.commentsCount;
-      successfulMetrics.push("comments");
+
+    // Known in advance to be unavailable — recorded for full provenance,
+    // but never actually requested.
+    for (const excluded of plan.excludedMetrics) {
+      failedMetrics.push({ metric: excluded.internalMetric, reason: toMetricFailureReason(excluded.reason) });
+      metricRecords.push({
+        providerMetric: excluded.providerMetric,
+        internalMetric: excluded.internalMetric,
+        value: null,
+        nativeUnit: excluded.nativeUnit,
+        status: excluded.reason,
+        sourceEndpoint: excluded.endpoint,
+        safeReasonCode: excluded.reason,
+      });
     }
 
-    const candidates = metricCandidatesFor(contentType);
-    const combined = await requestInsights(externalContentId, accessToken, candidates);
-
-    if (combined.ok) {
-      for (const metric of candidates) {
-        const value = combined.values.get(metric);
-        if (typeof value === "number") {
-          successfulMetrics.push(metric);
-          metrics[outputNameFor(metric)] = normalizeMetricValue(metric, value);
-        } else {
-          failedMetrics.push({ metric, reason: "metricUnsupported" });
+    const combinable = plan.metricsToRequest;
+    if (combinable.length > 0) {
+      const combined = await requestInsights(
+        externalContentId,
+        accessToken,
+        combinable.map((m) => m.providerMetric),
+      );
+      if (combined.ok) {
+        for (const planned of combinable) {
+          record(planned, combined.values.get(planned.providerMetric), null);
+        }
+      } else {
+        for (const planned of combinable) {
+          const single = await requestInsights(externalContentId, accessToken, [planned.providerMetric]);
+          record(planned, single.ok ? single.values.get(planned.providerMetric) : undefined, single.ok ? null : single.error);
         }
       }
-    } else {
-      for (const metric of candidates) {
-        const single = await requestInsights(externalContentId, accessToken, [metric]);
-        if (!single.ok) {
-          failedMetrics.push({ metric, reason: classifyInstagramMetricFailure(single.error) });
-          continue;
-        }
-        const value = single.values.get(metric);
-        if (typeof value !== "number") {
-          failedMetrics.push({ metric, reason: "metricUnsupported" });
-          continue;
-        }
-        successfulMetrics.push(metric);
-        metrics[outputNameFor(metric)] = normalizeMetricValue(metric, value);
-      }
+    }
+
+    // Metrics the registry has proven need their own request regardless
+    // of the combined call's outcome (none confirmed yet — see
+    // MediaInsightsPlan.independentMetrics).
+    for (const planned of plan.independentMetrics) {
+      const single = await requestInsights(externalContentId, accessToken, [planned.providerMetric]);
+      record(planned, single.ok ? single.values.get(planned.providerMetric) : undefined, single.ok ? null : single.error);
     }
 
     if (successfulMetrics.length === 0) {
+      const nothingWasEverAttempted =
+        combinable.length === 0 && plan.independentMetrics.length === 0 && plan.freeMetricsFromDiscovery.length === 0;
       return {
         kind: "unsupported",
         failedMetrics,
-        safeMessage: "Instagram does not provide performance metrics for this content.",
+        safeMessage: nothingWasEverAttempted
+          ? "Instagram has no known or documented performance metric for this content type yet."
+          : "Instagram does not provide performance metrics for this content.",
+        dataCompleteness: nothingWasEverAttempted ? "untested" : "unavailable",
+        metricRecords,
+        accountType,
+        providerMediaType: context.providerMediaType,
+        providerMediaProductType: context.providerMediaProductType,
       };
     }
 
@@ -471,7 +598,180 @@ export class InstagramConnector implements PlatformConnector {
       metrics,
       successfulMetrics,
       failedMetrics,
-      dataCompleteness: failedMetrics.length === 0 ? "complete" : "partial",
+      dataCompleteness: attemptedFailureCount === 0 ? "complete" : "partial",
+      metricRecords,
+      accountType,
+      providerMediaType: context.providerMediaType,
+      providerMediaProductType: context.providerMediaProductType,
     };
+  }
+
+  // Account-level insights are always requested independently per Meta
+  // request-parameter group (see planInstagramAccountInsightsRequest) —
+  // never as one universal call — and every group is attempted even if
+  // an earlier one failed entirely, so one broken group (e.g. a
+  // demographics call rejected for account-size reasons) never blocks
+  // another platform, another connection, or the rest of the import.
+  async fetchAccountInsights(
+    accessToken: string,
+    accountId: string,
+    rawAccountType: string | undefined,
+  ): Promise<AccountInsightsGroupResult[]> {
+    const accountType = normalizeInstagramAccountType(rawAccountType);
+    const plan = planInstagramAccountInsightsRequest({
+      accountType,
+      grantedPermissions: OAUTH_SCOPE.split(","),
+    });
+
+    const results: AccountInsightsGroupResult[] = [];
+
+    for (const group of plan.requestGroups) {
+      const requestParams: { period: string; since?: number; until?: number; breakdown?: string; timeframe?: string } = {
+        period: group.period,
+        breakdown: group.breakdown,
+        timeframe: group.timeframe,
+      };
+      if (group.requiresDateRange) {
+        const until = new Date();
+        const since = new Date(until.getTime() - 7 * 24 * 60 * 60 * 1000);
+        requestParams.since = Math.floor(since.getTime() / 1000);
+        requestParams.until = Math.floor(until.getTime() / 1000);
+      }
+
+      // Combined-first, bisected on failure — identical pattern to media
+      // insights: one grouped call whenever every metric in the group
+      // genuinely applies, falling back to one request per metric only
+      // when the combined call itself is rejected, so a single bad
+      // metric can never take down the rest of its group.
+      const combined = await requestAccountInsights(
+        accountId,
+        accessToken,
+        group.metrics.map((m) => m.providerMetric),
+        requestParams,
+      );
+
+      let metrics: AccountMetricRecord[];
+      if (combined.ok) {
+        metrics = group.metrics.flatMap((planned) =>
+          accountMetricRecordsFor(planned, group, combined.values.get(planned.providerMetric)),
+        );
+      } else {
+        metrics = [];
+        for (const planned of group.metrics) {
+          const single = await requestAccountInsights(accountId, accessToken, [planned.providerMetric], requestParams);
+          if (!single.ok) {
+            const reason = classifyInstagramMetricFailure(single.error);
+            metrics.push({
+              providerMetric: planned.providerMetric,
+              internalMetric: planned.internalMetric,
+              value: null,
+              nativeUnit: planned.nativeUnit,
+              status: toMetricRecordStatus(reason),
+              period: group.period,
+              breakdown: group.breakdown,
+              timeframe: group.timeframe,
+              sourceEndpoint: planned.endpoint,
+              safeReasonCode: reason,
+            });
+            continue;
+          }
+          metrics.push(...accountMetricRecordsFor(planned, group, single.values.get(planned.providerMetric)));
+        }
+      }
+
+      // Counted by distinct provider metric, not by record — a
+      // demographic metric can expand into several records (one per
+      // dimension bucket), which must never inflate the denominator
+      // past the number of metrics actually planned for this group.
+      const successfulProviderMetrics = new Set(
+        metrics.filter((m) => m.status === "supported").map((m) => m.providerMetric),
+      );
+      const completeness: DataCompleteness =
+        successfulProviderMetrics.size === 0
+          ? "unavailable"
+          : successfulProviderMetrics.size === group.metrics.length
+            ? "complete"
+            : "partial";
+
+      results.push({
+        period: group.period,
+        since: requestParams.since !== undefined ? new Date(requestParams.since * 1000).toISOString() : undefined,
+        until: requestParams.until !== undefined ? new Date(requestParams.until * 1000).toISOString() : undefined,
+        timeframe: group.timeframe,
+        completeness,
+        metrics,
+      });
+    }
+
+    return results;
+  }
+}
+
+// Converts one metric's raw result entries (already parsed by
+// requestAccountInsights) into one or more AccountMetricRecords —
+// several for a demographic metric with multiple dimension buckets, one
+// with status "empty" (never a fabricated zero) if Meta returned the
+// metric but nothing to report for it, and one with status "empty" if
+// the metric was entirely absent from the response.
+function accountMetricRecordsFor(
+  planned: PlannedMetric,
+  group: AccountInsightsRequestGroup,
+  entries: AccountInsightsValueEntry[] | undefined,
+): AccountMetricRecord[] {
+  const base = {
+    providerMetric: planned.providerMetric,
+    nativeUnit: planned.nativeUnit,
+    period: group.period,
+    breakdown: group.breakdown,
+    timeframe: group.timeframe,
+    sourceEndpoint: planned.endpoint,
+  };
+  if (entries === undefined) {
+    return [{ ...base, internalMetric: planned.internalMetric, value: null, status: "empty", safeReasonCode: "metricUnsupported" }];
+  }
+  if (entries.length === 0) {
+    return [
+      {
+        ...base,
+        internalMetric: planned.internalMetric,
+        value: null,
+        status: "empty",
+        unavailableDueToAccountSize: group.breakdown !== undefined,
+      },
+    ];
+  }
+  return entries.map((valueEntry) => ({
+    ...base,
+    internalMetric: valueEntry.dimensionLabel ? `${planned.internalMetric}:${valueEntry.dimensionLabel}` : planned.internalMetric,
+    value: valueEntry.value,
+    status: "supported" as const,
+  }));
+}
+
+export interface AccountInsightsGroupResult {
+  period: string;
+  since?: string;
+  until?: string;
+  timeframe?: string;
+  completeness: DataCompleteness;
+  metrics: AccountMetricRecord[];
+}
+
+function toMetricFailureReason(status: MetricRecordStatus): MetricFailureReason {
+  switch (status) {
+    case "permissionRequired":
+      return "permissionMissing";
+    case "invalidForContentType":
+      return "invalidMetricForContentType";
+    case "deprecated":
+    case "unsupported":
+    case "accessReviewRequired":
+      return "requestRejected";
+    case "empty":
+    case "untested":
+      return "metricUnsupported";
+    case "providerError":
+    default:
+      return "providerError";
   }
 }

@@ -7,6 +7,8 @@ import type { DataImportSettings } from "@/domain/models/DataImportSettings";
 import type { ImportRun } from "@/domain/models/ImportRun";
 import type { ImportedContent } from "@/domain/models/ImportedContent";
 import type { PerformanceSnapshot } from "@/domain/models/PerformanceSnapshot";
+import type { AccountPerformanceSnapshot } from "@/domain/models/AccountPerformanceSnapshot";
+import { CONNECTION_IDS } from "@/domain/connectionIds";
 
 interface ImportedContentListItem extends ImportedContent {
   latestPerformance: PerformanceSnapshot | null;
@@ -66,6 +68,9 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
   const [items, setItems] = useState<ImportedContentListItem[] | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
 
+  const [accountSnapshots, setAccountSnapshots] = useState<AccountPerformanceSnapshot[] | null>(null);
+  const [accountSnapshotsError, setAccountSnapshotsError] = useState<string | null>(null);
+
   async function loadSettings(): Promise<void> {
     try {
       const body = await apiFetch<{ settings: DataImportSettings }>("/api/data-import/settings");
@@ -95,10 +100,25 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
     }
   }
 
+  async function loadAccountSnapshots(): Promise<void> {
+    try {
+      const body = await apiFetch<{ snapshots: AccountPerformanceSnapshot[] }>(
+        `/api/connections/${CONNECTION_IDS.instagram}/account-performance`,
+      );
+      setAccountSnapshots(body.snapshots);
+      setAccountSnapshotsError(null);
+    } catch (error) {
+      setAccountSnapshotsError(
+        error instanceof Error ? error.message : "Failed to load Instagram account-level insights.",
+      );
+    }
+  }
+
   useEffect(() => {
     void loadSettings();
     void loadLatestRun();
     void loadItems();
+    void loadAccountSnapshots();
   }, []);
 
   async function saveLimit() {
@@ -135,6 +155,7 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
       // platform response, only what was actually persisted.
       await loadLatestRun();
       await loadItems();
+      await loadAccountSnapshots();
     }
   }
 
@@ -299,6 +320,49 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
                     <p style={{ margin: 0 }}>Last imported: {formatTimestamp(item.lastImportedAt)}</p>
                   </div>
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section style={{ marginTop: "1.5rem" }}>
+        <h3>Instagram account-level insights</h3>
+        <p>
+          Audience demographics, follower counts, and profile-level activity — describes the whole account,
+          never mixed with individual content metrics above.
+        </p>
+        {accountSnapshotsError && <p style={{ color: "#ff8080" }}>{accountSnapshotsError}</p>}
+        {accountSnapshots === null && !accountSnapshotsError && <p>Loading account-level insights…</p>}
+        {accountSnapshots !== null && accountSnapshots.length === 0 && (
+          <p>No account-level insights have been collected yet.</p>
+        )}
+        {accountSnapshots !== null && accountSnapshots.length > 0 && (
+          <div>
+            {accountSnapshots.map((snapshot, index) => (
+              <div
+                key={`${snapshot.period}-${snapshot.timeframe ?? snapshot.since ?? index}`}
+                style={{ border: "1px solid #333", borderRadius: 6, padding: "0.75rem 1rem", marginBottom: "0.75rem" }}
+              >
+                <p style={{ margin: "0 0 0.25rem" }}>
+                  <strong>period: {snapshot.period}</strong>
+                  {snapshot.timeframe ? ` · timeframe: ${snapshot.timeframe}` : ""}
+                  {snapshot.since ? ` · since: ${formatTimestamp(snapshot.since)}` : ""}
+                  {snapshot.until ? ` · until: ${formatTimestamp(snapshot.until)}` : ""}
+                  {" · completeness: "}
+                  {snapshot.completeness}
+                </p>
+                <ul style={{ margin: "0 0 0.25rem" }}>
+                  {snapshot.metrics.map((metric, metricIndex) => (
+                    <li key={`${metric.internalMetric}-${metricIndex}`}>
+                      {metric.internalMetric}: {metric.value === null ? "unavailable" : String(metric.value)}
+                      {" "}
+                      [{metric.status}
+                      {metric.unavailableDueToAccountSize ? ", limited by account size" : ""}]
+                    </li>
+                  ))}
+                </ul>
+                <p style={{ margin: 0 }}>Collected: {formatTimestamp(snapshot.collectedAt)}</p>
               </div>
             ))}
           </div>

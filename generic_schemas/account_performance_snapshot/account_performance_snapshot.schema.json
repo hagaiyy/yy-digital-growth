@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://yy-digital-growth/schemas/performance_snapshot.v1.0.0.schema.json",
-  "title": "performanceSnapshot",
+  "$id": "https://yy-digital-growth/schemas/account_performance_snapshot.v1.0.0.schema.json",
+  "title": "accountPerformanceSnapshot",
   "type": "object",
   "additionalProperties": false,
   "$defs": {
-    "metricRecord": {
+    "accountMetricRecord": {
       "type": "object",
       "additionalProperties": false,
       "required": ["providerMetric", "internalMetric", "value", "nativeUnit", "status", "sourceEndpoint"],
@@ -31,42 +31,41 @@
           ]
         },
         "period": { "type": "string", "minLength": 1 },
+        "breakdown": { "type": "string", "minLength": 1 },
+        "timeframe": { "type": "string", "minLength": 1 },
         "sourceEndpoint": { "type": "string", "minLength": 1 },
-        "safeReasonCode": { "type": "string", "minLength": 1 }
+        "safeReasonCode": { "type": "string", "minLength": 1 },
+        "unavailableDueToAccountSize": { "type": "boolean" }
       }
     }
   },
   "required": [
     "schemaVersion",
-    "performanceSnapshotId",
-    "importedContentId",
+    "accountPerformanceSnapshotId",
     "connectionId",
     "platform",
     "snapshotHour",
     "collectedAt",
+    "period",
+    "completeness",
     "metrics",
-    "dataCompleteness",
     "createdAt",
     "updatedAt"
   ],
   "properties": {
     "schemaVersion": { "const": "1.0.0" },
-    "performanceSnapshotId": { "type": "string", "minLength": 1 },
-    "importedContentId": { "type": "string", "minLength": 1 },
+    "accountPerformanceSnapshotId": { "type": "string", "minLength": 1 },
     "connectionId": { "type": "string", "minLength": 1 },
     "platform": { "type": "string", "enum": ["instagram", "facebook", "pinterest"] },
+    "accountType": { "type": "string", "minLength": 1 },
     "snapshotHour": { "type": "string", "format": "date-time" },
     "collectedAt": { "type": "string", "format": "date-time" },
-    "metrics": { "type": "object" },
-    "dataCompleteness": { "type": "string", "enum": ["complete", "partial", "unavailable", "untested"] },
-    "accountType": { "type": "string", "minLength": 1 },
-    "contentType": {
-      "type": "string",
-      "enum": ["reel", "story", "imagePost", "carousel", "video", "feedVideo", "pin", "videoPin", "unknown"]
-    },
-    "providerMediaType": { "type": "string", "minLength": 1 },
-    "providerMediaProductType": { "type": "string", "minLength": 1 },
-    "metricRecords": { "type": "array", "items": { "$ref": "#/$defs/metricRecord" } },
+    "period": { "type": "string", "minLength": 1 },
+    "since": { "type": "string", "minLength": 1 },
+    "until": { "type": "string", "minLength": 1 },
+    "timeframe": { "type": "string", "minLength": 1 },
+    "completeness": { "type": "string", "enum": ["complete", "partial", "unavailable", "untested"] },
+    "metrics": { "type": "array", "items": { "$ref": "#/$defs/accountMetricRecord" } },
     "createdAt": { "type": "string", "format": "date-time" },
     "updatedAt": { "type": "string", "format": "date-time" }
   }
