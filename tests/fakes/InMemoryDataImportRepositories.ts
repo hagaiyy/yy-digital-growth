@@ -149,8 +149,16 @@ export class InMemoryPerformanceSnapshotRepository implements PerformanceSnapsho
 export class InMemoryAccountPerformanceSnapshotRepository implements AccountPerformanceSnapshotRepository {
   private readonly records = new Map<string, AccountPerformanceSnapshot>();
 
-  private key(connectionId: string, snapshotHour: string, period: string, since?: string, until?: string, timeframe?: string): string {
-    return `${connectionId}::${snapshotHour}::${period}::${since ?? ""}::${until ?? ""}::${timeframe ?? ""}`;
+  private key(
+    connectionId: string,
+    snapshotHour: string,
+    period: string,
+    since?: string,
+    until?: string,
+    timeframe?: string,
+    breakdown?: string,
+  ): string {
+    return `${connectionId}::${snapshotHour}::${period}::${since ?? ""}::${until ?? ""}::${timeframe ?? ""}::${breakdown ?? ""}`;
   }
 
   async findByConnectionId(connectionId: string): Promise<AccountPerformanceSnapshot[]> {
@@ -163,7 +171,7 @@ export class InMemoryAccountPerformanceSnapshotRepository implements AccountPerf
     const all = await this.findByConnectionId(connectionId);
     const latestByGroup = new Map<string, AccountPerformanceSnapshot>();
     for (const snapshot of all) {
-      const groupKey = `${snapshot.period}::${snapshot.since ?? ""}::${snapshot.until ?? ""}::${snapshot.timeframe ?? ""}`;
+      const groupKey = `${snapshot.period}::${snapshot.since ?? ""}::${snapshot.until ?? ""}::${snapshot.timeframe ?? ""}::${snapshot.breakdown ?? ""}`;
       if (!latestByGroup.has(groupKey)) latestByGroup.set(groupKey, snapshot);
     }
     return Array.from(latestByGroup.values());
@@ -173,7 +181,15 @@ export class InMemoryAccountPerformanceSnapshotRepository implements AccountPerf
     input: UpsertAccountPerformanceSnapshotInput,
   ): Promise<UpsertAccountPerformanceSnapshotResult> {
     const now = new Date().toISOString();
-    const key = this.key(input.connectionId, input.snapshotHour, input.period, input.since, input.until, input.timeframe);
+    const key = this.key(
+      input.connectionId,
+      input.snapshotHour,
+      input.period,
+      input.since,
+      input.until,
+      input.timeframe,
+      input.breakdown,
+    );
     const existing = this.records.get(key);
 
     if (existing) {

@@ -17,6 +17,7 @@ function mockReelInsightsResponse() {
       { name: "total_interactions", values: [{ value: 31 }] },
       { name: "ig_reels_avg_watch_time", values: [{ value: 10465 }] },
       { name: "ig_reels_video_view_total_time", values: [{ value: 5525570 }] },
+      { name: "reels_skip_rate", values: [{ value: 61.7 }] },
     ],
   };
 }

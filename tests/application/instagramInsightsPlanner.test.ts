@@ -89,15 +89,21 @@ test("account plan groups day-period aggregates separately from lifetime demogra
   assert.ok(dayGroup!.requiresDateRange);
   assert.ok(!demographicsGroup!.requiresDateRange, "demographics use timeframe, not a computed date range");
 
+  // engaged_audience_demographics/reached_audience_demographics were
+  // confirmed rejected in this task's own live production run and are
+  // now excluded outright — only follower_demographics, which was
+  // confirmed supported live, remains in the requested group.
   const demographicMetrics = demographicsGroup!.metrics.map((m) => m.providerMetric);
   assert.ok(demographicMetrics.includes("follower_demographics"));
-  assert.ok(demographicMetrics.includes("engaged_audience_demographics"));
+  assert.ok(!demographicMetrics.includes("engaged_audience_demographics"));
 });
 
-test("account plan excludes deprecated metrics like profile_views and website_clicks", () => {
+test("account plan excludes deprecated metrics like profile_views and website_clicks, and metrics confirmed rejected live like engaged/reached audience demographics", () => {
   const plan = planInstagramAccountInsightsRequest({ accountType: "creator", grantedPermissions: GRANTED });
   const excludedNames = plan.excludedMetrics.map((m) => m.providerMetric);
   assert.ok(excludedNames.includes("profile_views"));
+  assert.ok(excludedNames.includes("engaged_audience_demographics"));
+  assert.ok(excludedNames.includes("reached_audience_demographics"));
   assert.ok(excludedNames.includes("website_clicks"));
   const allGroupedMetrics = plan.requestGroups.flatMap((g) => g.metrics.map((m) => m.providerMetric));
   assert.ok(!allGroupedMetrics.includes("profile_views"));

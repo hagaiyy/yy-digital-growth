@@ -461,6 +461,97 @@ test("Instagram account-level insights are persisted separately from content sna
   });
 });
 
+// Regression: two groups sharing the same period/since/until but a
+// different `breakdown` (e.g. profile_links_taps' contact_button_type
+// vs the plain no-breakdown aggregate group) must persist as two
+// distinct account snapshots, never collide into one.
+test("account snapshot groups with the same period/since/until but different breakdown never collide", async () => {
+  await withEncryptionKey(async () => {
+    const env = buildEnvironment();
+    await seedAllConnected(env);
+    const sharedSince = "2026-07-25T00:00:00.000Z";
+    const sharedUntil = "2026-08-01T00:00:00.000Z";
+    env.instagramConnector.accountInsightsResult = [
+      {
+        period: "day",
+        since: sharedSince,
+        until: sharedUntil,
+        completeness: "complete",
+        metrics: [
+          {
+            providerMetric: "reach",
+            internalMetric: "reach",
+            value: 100,
+            nativeUnit: "count",
+            status: "supported",
+            sourceEndpoint: "/{ig-user-id}/insights",
+          },
+        ],
+      },
+      {
+        period: "day",
+        since: sharedSince,
+        until: sharedUntil,
+        breakdown: "contact_button_type",
+        completeness: "complete",
+        metrics: [
+          {
+            providerMetric: "profile_links_taps",
+            internalMetric: "profileLinksTaps",
+            value: 7,
+            nativeUnit: "count",
+            status: "supported",
+            breakdown: "contact_button_type",
+            sourceEndpoint: "/{ig-user-id}/insights",
+          },
+        ],
+      },
+    ];
+
+    await env.dataImportService.runImport();
+
+    const snapshots = await env.dataImportService.getLatestAccountPerformance(CONNECTION_IDS.instagram);
+    assert.equal(snapshots.length, 2, "the no-breakdown and contact_button_type groups must both persist");
+    const providerMetrics = snapshots.flatMap((s) => s.metrics.map((m) => m.providerMetric)).sort();
+    assert.deepEqual(providerMetrics, ["profile_links_taps", "reach"]);
+  });
+});
+
+// Regression: since/until must be derived from snapshotHour, not a
+// fresh "now" each call — otherwise two imports in the same UTC hour
+// create duplicate rows instead of updating the same one.
+test("two imports within the same UTC hour update the same account snapshot instead of duplicating", async () => {
+  await withEncryptionKey(async () => {
+    const fixedHour = "2026-08-01T15:30:00.000Z";
+    const env = buildEnvironment([fixedHour, fixedHour, fixedHour, fixedHour, fixedHour, fixedHour, fixedHour, fixedHour]);
+    await seedAllConnected(env);
+    env.instagramConnector.accountInsightsResult = [
+      {
+        period: "day",
+        since: "2026-07-25T15:30:00.000Z",
+        until: "2026-08-01T15:30:00.000Z",
+        completeness: "complete",
+        metrics: [
+          {
+            providerMetric: "reach",
+            internalMetric: "reach",
+            value: 100,
+            nativeUnit: "count",
+            status: "supported",
+            sourceEndpoint: "/{ig-user-id}/insights",
+          },
+        ],
+      },
+    ];
+
+    await env.dataImportService.runImport();
+    await env.dataImportService.runImport();
+
+    const snapshots = await env.dataImportService.getAccountPerformanceHistory(CONNECTION_IDS.instagram);
+    assert.equal(snapshots.length, 1, "a second import in the same UTC hour must update the existing row");
+  });
+});
+
 test("an account-insights fetch failure never fails the Instagram connection or blocks content import", async () => {
   await withEncryptionKey(async () => {
     const env = buildEnvironment();

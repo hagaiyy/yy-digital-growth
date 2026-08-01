@@ -112,6 +112,7 @@ export class FakeInstagramConnector {
     _accessToken: string,
     _accountId: string,
     _rawAccountType: string | undefined,
+    _referenceHourIso: string,
   ): Promise<AccountInsightsGroupResult[]> {
     this.fetchAccountInsightsCallCount += 1;
     return this.accountInsightsResult;

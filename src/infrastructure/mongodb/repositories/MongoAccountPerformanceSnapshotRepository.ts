@@ -9,7 +9,7 @@ import type {
 } from "@/domain/repositories/AccountPerformanceSnapshotRepository";
 
 function groupKeyFor(snapshot: AccountPerformanceSnapshot): string {
-  return `${snapshot.period}::${snapshot.since ?? ""}::${snapshot.until ?? ""}::${snapshot.timeframe ?? ""}`;
+  return `${snapshot.period}::${snapshot.since ?? ""}::${snapshot.until ?? ""}::${snapshot.timeframe ?? ""}::${snapshot.breakdown ?? ""}`;
 }
 
 export class MongoAccountPerformanceSnapshotRepository implements AccountPerformanceSnapshotRepository {
@@ -51,11 +51,13 @@ export class MongoAccountPerformanceSnapshotRepository implements AccountPerform
     const now = new Date().toISOString();
     const newId = `account_performance_snapshot_${randomUUID()}`;
 
-    const optionalFields: Partial<Pick<typeof input, "accountType" | "since" | "until" | "timeframe">> = {};
+    const optionalFields: Partial<Pick<typeof input, "accountType" | "since" | "until" | "timeframe" | "breakdown">> =
+      {};
     if (input.accountType !== undefined) optionalFields.accountType = input.accountType;
     if (input.since !== undefined) optionalFields.since = input.since;
     if (input.until !== undefined) optionalFields.until = input.until;
     if (input.timeframe !== undefined) optionalFields.timeframe = input.timeframe;
+    if (input.breakdown !== undefined) optionalFields.breakdown = input.breakdown;
 
     const record = await this.collection.findOneAndUpdate(
       {
@@ -65,6 +67,7 @@ export class MongoAccountPerformanceSnapshotRepository implements AccountPerform
         since: input.since ?? { $exists: false },
         until: input.until ?? { $exists: false },
         timeframe: input.timeframe ?? { $exists: false },
+        breakdown: input.breakdown ?? { $exists: false },
       },
       {
         $set: {

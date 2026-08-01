@@ -31,9 +31,14 @@ test("a rejected combined account-insights group is bisected so one bad metric n
 
   try {
     const connector = new InstagramConnector();
-    const groups = await connector.fetchAccountInsights("fake-token", "fake-account-id", "MEDIA_CREATOR");
+    const groups = await connector.fetchAccountInsights(
+      "fake-token",
+      "fake-account-id",
+      "MEDIA_CREATOR",
+      "2026-08-01T15:00:00.000Z",
+    );
 
-    const dayGroup = groups.find((g) => g.period === "day" && g.timeframe === undefined);
+    const dayGroup = groups.find((g) => g.period === "day" && g.timeframe === undefined && g.breakdown === undefined);
     assert.ok(dayGroup, "expected a day-period group in the result");
 
     // Bisection happened: more than one request was made for this group.

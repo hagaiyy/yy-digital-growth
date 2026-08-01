@@ -407,16 +407,21 @@ export class DataImportService {
     accessToken: string,
     accountId: string,
   ): Promise<void> {
+    const snapshotHour = truncateToHourIso(this.now());
     let groups: Awaited<ReturnType<InstagramConnector["fetchAccountInsights"]>>;
     try {
-      groups = await this.instagramConnector.fetchAccountInsights(accessToken, accountId, connection.accountType);
+      groups = await this.instagramConnector.fetchAccountInsights(
+        accessToken,
+        accountId,
+        connection.accountType,
+        snapshotHour,
+      );
     } catch {
       // Never propagate — account insights are a separate, best-effort
       // addition to the content import that just happened.
       return;
     }
 
-    const snapshotHour = truncateToHourIso(this.now());
     for (const group of groups) {
       try {
         await this.accountPerformanceSnapshotRepository.upsertByHour({
@@ -430,6 +435,7 @@ export class DataImportService {
           since: group.since,
           until: group.until,
           timeframe: group.timeframe,
+          breakdown: group.breakdown,
           completeness: group.completeness,
           metrics: group.metrics,
         });

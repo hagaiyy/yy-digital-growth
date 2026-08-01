@@ -64,6 +64,7 @@
     "since": { "type": "string", "minLength": 1 },
     "until": { "type": "string", "minLength": 1 },
     "timeframe": { "type": "string", "minLength": 1 },
+    "breakdown": { "type": "string", "minLength": 1 },
     "completeness": { "type": "string", "enum": ["complete", "partial", "unavailable", "untested"] },
     "metrics": { "type": "array", "items": { "$ref": "#/$defs/accountMetricRecord" } },
     "createdAt": { "type": "string", "format": "date-time" },

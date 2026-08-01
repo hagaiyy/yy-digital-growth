@@ -37,11 +37,15 @@ export interface AccountMetricRecord {
 // since/until date range; demographic metrics take period=lifetime + a
 // relative `timeframe` (this_month/this_week) instead, and never accept
 // since/until. A snapshot groups only metrics that share one shape, so
-// it carries since/until OR timeframe, never a mix — both are optional
-// top-level fields and together (with period) form the "one account
-// snapshot per connectionId + snapshotHour + period + timeframe" rule,
-// where an aggregate group's concrete since/until stands in for a
-// timeframe that was never relative to begin with.
+// it carries since/until OR timeframe, never a mix. `since`/`until` are
+// always derived deterministically from `snapshotHour` (never live
+// "now"), so two imports within the same UTC hour compute the identical
+// value and correctly update the same document instead of creating a
+// new one. `breakdown` is part of the row's identity alongside period/
+// since/until/timeframe — profile_links_taps (contact_button_type) and
+// follows_and_unfollows (follow_type) are both period=day with no
+// timeframe, exactly like the plain aggregate group, and only the
+// breakdown value keeps their rows distinct rather than colliding.
 export interface AccountPerformanceSnapshot {
   schemaVersion: "1.0.0";
   accountPerformanceSnapshotId: string;
@@ -54,6 +58,7 @@ export interface AccountPerformanceSnapshot {
   since?: string;
   until?: string;
   timeframe?: string;
+  breakdown?: string;
   completeness: DataCompleteness;
   metrics: AccountMetricRecord[];
   createdAt: string;

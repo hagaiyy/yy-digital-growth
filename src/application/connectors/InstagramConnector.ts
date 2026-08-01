@@ -612,10 +612,17 @@ export class InstagramConnector implements PlatformConnector {
   // an earlier one failed entirely, so one broken group (e.g. a
   // demographics call rejected for account-size reasons) never blocks
   // another platform, another connection, or the rest of the import.
+  //
+  // `referenceHourIso` is the caller's truncated snapshotHour, never a
+  // fresh `new Date()` read here — since/until must be a pure function
+  // of the hour being collected, so two imports within the same UTC
+  // hour compute the identical date range and correctly update the same
+  // stored snapshot instead of each creating a new one.
   async fetchAccountInsights(
     accessToken: string,
     accountId: string,
     rawAccountType: string | undefined,
+    referenceHourIso: string,
   ): Promise<AccountInsightsGroupResult[]> {
     const accountType = normalizeInstagramAccountType(rawAccountType);
     const plan = planInstagramAccountInsightsRequest({
@@ -632,7 +639,7 @@ export class InstagramConnector implements PlatformConnector {
         timeframe: group.timeframe,
       };
       if (group.requiresDateRange) {
-        const until = new Date();
+        const until = new Date(referenceHourIso);
         const since = new Date(until.getTime() - 7 * 24 * 60 * 60 * 1000);
         requestParams.since = Math.floor(since.getTime() / 1000);
         requestParams.until = Math.floor(until.getTime() / 1000);
@@ -698,6 +705,7 @@ export class InstagramConnector implements PlatformConnector {
         since: requestParams.since !== undefined ? new Date(requestParams.since * 1000).toISOString() : undefined,
         until: requestParams.until !== undefined ? new Date(requestParams.until * 1000).toISOString() : undefined,
         timeframe: group.timeframe,
+        breakdown: group.breakdown,
         completeness,
         metrics,
       });
@@ -753,6 +761,7 @@ export interface AccountInsightsGroupResult {
   since?: string;
   until?: string;
   timeframe?: string;
+  breakdown?: string;
   completeness: DataCompleteness;
   metrics: AccountMetricRecord[];
 }
