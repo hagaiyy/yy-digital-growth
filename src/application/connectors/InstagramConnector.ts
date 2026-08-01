@@ -108,12 +108,14 @@ function outputNameFor(metric: string): string {
   return METRIC_OUTPUT_NAMES[metric] ?? metric;
 }
 
-function normalizeMetricValue(metric: string, value: number): number {
-  // Meta reports watch-time metrics in seconds; stored in milliseconds
-  // for consistency with how durations are represented elsewhere.
-  if (metric === "ig_reels_avg_watch_time" || metric === "ig_reels_video_view_total_time") {
-    return Math.round(value * 1000);
-  }
+// Live production data disproved the original assumption here: a reel
+// with 609 real views returning a raw ig_reels_avg_watch_time of 10465
+// would be ~174 minutes of average watch time if treated as seconds —
+// impossible for a short-form Reel. Meta already returns these two
+// watch-time metrics in milliseconds; the value is stored as-is, with no
+// unit conversion, and the ~9-10s figures that result are consistent
+// with real Reel-length viewing behavior.
+function normalizeMetricValue(_metric: string, value: number): number {
   return value;
 }
 
