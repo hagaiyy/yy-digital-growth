@@ -77,6 +77,12 @@ async function testFacebookPageFields(pageId: string, pageAccessToken: string) {
     error: baseline.ok ? null : safeError(baseline.error),
   });
 
+  let firstPostId: string | null = null;
+  if (baseline.ok) {
+    const data = (baseline.body.data as Array<Record<string, unknown>> | undefined) ?? [];
+    firstPostId = (data[0]?.id as string | undefined) ?? null;
+  }
+
   for (const field of FACEBOOK_PAGE_FIELDS_TO_TEST) {
     const url = new URL(`${GRAPH_API_BASE}/${pageId}/posts`);
     url.searchParams.set("fields", `id,created_time,${field.fieldExpr}`);
@@ -95,7 +101,45 @@ async function testFacebookPageFields(pageId: string, pageAccessToken: string) {
     results.push({ field: field.name, outcome: hasAnyValue ? "supported" : "empty", error: null });
   }
 
-  return results;
+  // Distinguishes "rejected on the /posts listing edge" from "rejected
+  // everywhere" — tests the exact same field expansion via individual
+  // object lookup instead of the listing edge, and via the dedicated
+  // standalone edges, only for the two fields that were rejected above.
+  const individualLookup: Array<{ field: string; outcome: "supported" | "empty" | "rejected"; error: ReturnType<typeof safeError> }> = [];
+  if (firstPostId) {
+    for (const [label, fieldExpr] of [
+      ["likes.summary (individual lookup)", "likes.summary(true)"],
+      ["comments.summary (individual lookup)", "comments.summary(true)"],
+    ] as const) {
+      const url = new URL(`${GRAPH_API_BASE}/${firstPostId}`);
+      url.searchParams.set("fields", fieldExpr);
+      url.searchParams.set("access_token", pageAccessToken);
+      const result = await safeGet(url);
+      if (!result.ok) {
+        individualLookup.push({ field: label, outcome: "rejected", error: safeError(result.error) });
+        continue;
+      }
+      const key = fieldExpr.split(".")[0]!;
+      const hasValue = result.body[key] !== undefined && result.body[key] !== null;
+      individualLookup.push({ field: label, outcome: hasValue ? "supported" : "empty", error: null });
+    }
+    for (const [label, edge] of [
+      ["likes edge with summary param", "likes"],
+      ["comments edge with summary param", "comments"],
+    ] as const) {
+      const url = new URL(`${GRAPH_API_BASE}/${firstPostId}/${edge}`);
+      url.searchParams.set("summary", "true");
+      url.searchParams.set("access_token", pageAccessToken);
+      const result = await safeGet(url);
+      individualLookup.push({
+        field: label,
+        outcome: result.ok ? "supported" : "rejected",
+        error: result.ok ? null : safeError(result.error),
+      });
+    }
+  }
+
+  return { listingEdge: results, individualLookup, testedPostIdPresent: firstPostId !== null };
 }
 
 // ---- Instagram metric isolation (Parts 3 & 4) ----
