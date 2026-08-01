@@ -118,7 +118,7 @@ test("FacebookConnector.buildAuthorizationUrl throws setupRequired naming the mi
   });
 });
 
-test("FacebookConnector.buildAuthorizationUrl produces a real facebook.com authorization URL requesting only the three required scopes, never read_insights", () => {
+test("FacebookConnector.buildAuthorizationUrl produces a real facebook.com authorization URL requesting exactly the four required scopes, including read_insights", () => {
   withEnv(
     {
       META_APP_ID: "configured-fb-app-id",
@@ -137,12 +137,22 @@ test("FacebookConnector.buildAuthorizationUrl produces a real facebook.com autho
         "https://localhost:3000/api/connections/facebook/callback",
       );
       const scope = url.searchParams.get("scope") ?? "";
-      assert.equal(scope, "public_profile,pages_show_list,pages_read_engagement");
+      assert.equal(scope, "public_profile,pages_show_list,pages_read_engagement,read_insights");
       const requestedScopes = scope.split(",");
       assert.ok(
-        !requestedScopes.includes("read_insights"),
-        "must not request read_insights — Meta rejects it for this app with Invalid Scopes",
+        requestedScopes.includes("read_insights"),
+        "read_insights is now Ready for testing in the Meta app and must be requested",
       );
+      for (const forbidden of [
+        "pages_manage_posts",
+        "pages_manage_engagement",
+        "pages_manage_metadata",
+        "pages_read_user_content",
+        "user_posts",
+        "business_management",
+      ]) {
+        assert.ok(!requestedScopes.includes(forbidden), `must never request ${forbidden}`);
+      }
       assert.ok(!scope.includes("publish"));
       assert.ok(!scope.includes("ads"));
     },

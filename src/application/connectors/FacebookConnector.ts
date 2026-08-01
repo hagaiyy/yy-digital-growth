@@ -14,12 +14,15 @@ import type { ContentType } from "@/domain/models/ImportedContent";
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
-// Read-only scope only: no publishing, advertising, or unrelated
-// permission is requested. `read_insights` is deliberately not
-// requested — Meta rejects it for this app with "Invalid Scopes", and
-// Page post metrics already degrade to an "unsupported" result (see
-// fetchPagePostMetrics below) rather than depending on it.
-const OAUTH_SCOPE = "public_profile,pages_show_list,pages_read_engagement";
+// Read-only scope only: no publishing, advertising, moderation,
+// messaging, ads, or webhook permission is requested. `read_insights`
+// was added once the Meta Developer app marked it "Ready for testing" —
+// previously Meta rejected it for this app with "Invalid Scopes", which
+// is why Page-level and several post-level metrics degraded to
+// "unsupported" (see fetchPagePostMetrics). `business_management` is
+// deliberately not requested: fetchManagedPages only ever calls
+// GET /me/accounts, which needs no Business Manager permission.
+const OAUTH_SCOPE = "public_profile,pages_show_list,pages_read_engagement,read_insights";
 
 // Stage A (content discovery) fields only — see fetchPageContent. Engagement
 // fields (likes/comments summary, shares) are proven to require a

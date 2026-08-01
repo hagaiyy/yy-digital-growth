@@ -156,9 +156,19 @@ test("startFacebookAccountConnect returns a real facebook.com authorization URL 
       );
       assert.ok(url.searchParams.get("state"), "expected a non-empty CSRF state value");
       const scope = url.searchParams.get("scope") ?? "";
-      assert.equal(scope, "public_profile,pages_show_list,pages_read_engagement");
+      assert.equal(scope, "public_profile,pages_show_list,pages_read_engagement,read_insights");
       const requestedScopes = scope.split(",");
-      assert.ok(!requestedScopes.includes("read_insights"), "must not request read_insights — Meta rejects it with Invalid Scopes");
+      assert.ok(requestedScopes.includes("read_insights"), "read_insights is now Ready for testing in the Meta app");
+      for (const forbidden of [
+        "pages_manage_posts",
+        "pages_manage_engagement",
+        "pages_manage_metadata",
+        "pages_read_user_content",
+        "user_posts",
+        "business_management",
+      ]) {
+        assert.ok(!requestedScopes.includes(forbidden), `must never request ${forbidden}`);
+      }
       assert.ok(!url.searchParams.get("scope")?.includes("publish"), "must never request a publish permission");
     },
   );
