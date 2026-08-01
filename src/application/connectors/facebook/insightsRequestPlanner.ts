@@ -27,13 +27,21 @@ export interface ExcludedMetric {
 
 // Statuses the registry can carry that mean "do not send this request —
 // we already know, from documentation or a prior live response, that it
-// cannot succeed right now." Every other status (available, empty,
-// untested, providerError) is still worth a real attempt.
+// cannot succeed right now." `permissionRequired` is included because,
+// unlike the generic permission-grant check below (which only compares
+// against this app's currently *requested* OAuth scopes), a registry
+// entry only carries this status once a real production response has
+// confirmed the gap is a permission this task is not allowed to request
+// (e.g. likes.summary/comments.summary needing pages_read_user_content)
+// — retrying it would only ever reproduce the same rejection. Every
+// other status (available, empty, untested, providerError) is still
+// worth a real attempt.
 const NEVER_REQUEST_STATUSES: ReadonlySet<MetricRecordStatus> = new Set([
   "unsupported",
   "invalidForContentType",
   "deprecated",
   "accessReviewRequired",
+  "permissionRequired",
 ]);
 
 function hasPermission(required: string, granted: string[]): boolean {

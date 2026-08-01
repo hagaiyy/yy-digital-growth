@@ -8,14 +8,24 @@ import {
 
 const GRANTED = ["public_profile", "pages_show_list", "pages_read_engagement", "read_insights"];
 
-test("imagePost plan requests engagement counters via the object endpoint and distribution metrics via /insights", () => {
+test("imagePost plan requests shares via the object endpoint, excludes likes/comments (confirmed permission gap), and requests distribution metrics via /insights", () => {
   const plan = planFacebookPostInsightsRequest({ contentType: "imagePost", grantedPermissions: GRANTED });
 
   const objectFieldNames = plan.objectFieldMetrics.map((m) => m.providerMetric);
-  assert.ok(objectFieldNames.includes("likes.summary(true)"));
-  assert.ok(objectFieldNames.includes("comments.summary(true)"));
+  // likes.summary/comments.summary are confirmed (live production,
+  // 2026-08-01) to always reject with OAuthException code=10 even with
+  // read_insights + pages_read_engagement granted — they need
+  // pages_read_user_content, which this task forbids requesting, so the
+  // registry marks them permissionRequired and the planner excludes
+  // them outright rather than repeating a guaranteed-failing request.
+  assert.ok(!objectFieldNames.includes("likes.summary(true)"));
+  assert.ok(!objectFieldNames.includes("comments.summary(true)"));
   assert.ok(objectFieldNames.includes("shares"));
   assert.ok(plan.objectFieldMetrics.every((m) => m.endpoint === "/{post-id}"));
+
+  const excludedNames = plan.excludedMetrics.map((m) => m.providerMetric);
+  assert.ok(excludedNames.includes("likes.summary(true)"));
+  assert.ok(excludedNames.includes("comments.summary(true)"));
 
   const insightsNames = plan.insightsMetrics.map((m) => m.providerMetric);
   assert.ok(insightsNames.includes("post_clicks"));

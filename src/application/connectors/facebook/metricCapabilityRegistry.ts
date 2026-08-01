@@ -139,11 +139,11 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "likes.summary(true)",
       internalMetric: "likes",
       nativeUnit: "count",
-      status: "untested",
+      status: "permissionRequired",
       endpoint: POST_OBJECT_ENDPOINT,
       requiredPermission: "pages_read_engagement",
       safeLimitation:
-        "Rejected everywhere (OAuthException code=10) on the pre-read_insights Page token; re-testing now that read_insights is granted, since that permission alone was not previously sufficient.",
+        "Live production response (imagePost/linkPost, 2026-08-01): still rejected (OAuthException code=10) even with read_insights and pages_read_engagement both granted — this field needs pages_read_user_content, which this task explicitly forbids requesting. Video content types were not directly tested (no video content available), but this is a permission check, not a content-type check, so the same rejection is expected to generalize.",
     }),
   ),
   ...forEachContentType([...NON_VIDEO_CONTENT_TYPES, ...VIDEO_CONTENT_TYPES], (contentType) =>
@@ -152,11 +152,11 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "comments.summary(true)",
       internalMetric: "comments",
       nativeUnit: "count",
-      status: "untested",
+      status: "permissionRequired",
       endpoint: POST_OBJECT_ENDPOINT,
       requiredPermission: "pages_read_engagement",
       safeLimitation:
-        "Rejected everywhere (OAuthException code=10) on the pre-read_insights Page token; re-testing now that read_insights is granted.",
+        "Live production response (imagePost/linkPost, 2026-08-01): still rejected (OAuthException code=10) even with read_insights and pages_read_engagement both granted — needs pages_read_user_content, which this task explicitly forbids requesting.",
     }),
   ),
   ...forEachContentType([...NON_VIDEO_CONTENT_TYPES, ...VIDEO_CONTENT_TYPES], (contentType) =>
@@ -165,10 +165,11 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "shares",
       internalMetric: "shares",
       nativeUnit: "count",
-      status: "untested",
+      status: "empty",
       endpoint: POST_OBJECT_ENDPOINT,
       requiredPermission: "pages_read_engagement",
-      safeLimitation: "Previously observed empty (never rejected) — Meta may omit this field entirely for a post with zero shares rather than returning a literal 0.",
+      safeLimitation:
+        "Live production response (imagePost/linkPost, 2026-08-01): field accepted, no error, but no value returned for either tested post — Meta likely omits this field entirely for a post with zero shares rather than returning a literal 0; never converted to a fabricated zero.",
     }),
   ),
 
@@ -202,8 +203,8 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "post_media_view",
       internalMetric: "views",
       nativeUnit: "count",
-      status: "untested",
-      safeLimitation: "Meta's documented successor direction ('Media Views') to the deprecated impressions family; never requested against real content yet.",
+      status: "available",
+      safeLimitation: "Live production response (imagePost/linkPost, 2026-08-01): confirmed supported with real values (0 and 5) — Meta's documented successor to the deprecated impressions family.",
     }),
   ),
   ...forEachContentType(NON_VIDEO_CONTENT_TYPES, (contentType) =>
@@ -212,8 +213,8 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "post_engaged_users",
       internalMetric: "engagedUsers",
       nativeUnit: "count",
-      status: "untested",
-      safeLimitation: "Used successfully by this app's old code path before read_insights was granted (always rejected then); not found in the current v26.0 post-metrics documentation — may be renamed or removed.",
+      status: "empty",
+      safeLimitation: "Live production response (imagePost/linkPost, 2026-08-01): field accepted, no error, but no value returned for either tested post. Not found in current v26.0 post-metrics documentation — may be a legacy name Meta still accepts but rarely populates.",
     }),
   ),
   ...forEachContentType(NON_VIDEO_CONTENT_TYPES, (contentType) =>
@@ -222,7 +223,8 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "post_clicks",
       internalMetric: "clicks",
       nativeUnit: "count",
-      status: "untested",
+      status: "available",
+      safeLimitation: "Live production response (imagePost/linkPost, 2026-08-01): confirmed supported (value 0 for both tested posts).",
     }),
   ),
   ...forEachContentType(NON_VIDEO_CONTENT_TYPES, (contentType) =>
@@ -231,8 +233,8 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
       providerMetric: "post_reactions_like_total",
       internalMetric: "reactionsLikeTotal",
       nativeUnit: "count",
-      status: "untested",
-      safeLimitation: "Insights-based alternative to the likes.summary object field — tested independently since the two use different endpoints and permission history.",
+      status: "available",
+      safeLimitation: "Live production response (imagePost/linkPost, 2026-08-01): confirmed supported via /insights (value 0 for both tested posts) even though the likes.summary object field is rejected — the two use different endpoints and permission requirements.",
     }),
   ),
 
@@ -325,7 +327,13 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
   // Page-level — never mixed into a post-level snapshot. Every
   // candidate is untested until a real production response.
   // ---------------------------------------------------------------
-  page({ providerMetric: "page_impressions", internalMetric: "impressions", nativeUnit: "count", status: "untested" }),
+  page({
+    providerMetric: "page_impressions",
+    internalMetric: "impressions",
+    nativeUnit: "count",
+    status: "empty",
+    safeLimitation: "Live production response (2026-08-01): field accepted, no error, but no value returned. Meta documents several Page insights metrics as requiring 100+ Page likes; this Page's follower count has not been independently confirmed against that threshold.",
+  }),
   page({
     providerMetric: "page_impressions_unique",
     internalMetric: "reach",
@@ -333,8 +341,20 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     status: "deprecated",
     safeLimitation: "Confirmed deprecated above Graph API v25 in current Meta documentation (v26.0).",
   }),
-  page({ providerMetric: "page_post_engagements", internalMetric: "postEngagements", nativeUnit: "count", status: "untested" }),
-  page({ providerMetric: "page_video_views", internalMetric: "videoViews", nativeUnit: "count", status: "untested" }),
+  page({
+    providerMetric: "page_post_engagements",
+    internalMetric: "postEngagements",
+    nativeUnit: "count",
+    status: "available",
+    safeLimitation: "Live production response (2026-08-01): confirmed supported (value 0).",
+  }),
+  page({
+    providerMetric: "page_video_views",
+    internalMetric: "videoViews",
+    nativeUnit: "count",
+    status: "available",
+    safeLimitation: "Live production response (2026-08-01): confirmed supported (value 0) — this Page had no video posts in the tested window.",
+  }),
   page({
     providerMetric: "page_video_views_unique",
     internalMetric: "videoViewsUnique",
@@ -342,22 +362,46 @@ export const FACEBOOK_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     status: "deprecated",
     safeLimitation: "Confirmed deprecated above Graph API v25.",
   }),
-  page({ providerMetric: "page_fans", internalMetric: "fans", nativeUnit: "count", status: "untested" }),
-  page({ providerMetric: "page_fan_adds_unique", internalMetric: "fanAddsUnique", nativeUnit: "count", status: "untested" }),
-  page({ providerMetric: "page_fan_removes_unique", internalMetric: "fanRemovesUnique", nativeUnit: "count", status: "untested" }),
-  page({ providerMetric: "page_views_total", internalMetric: "pageViewsTotal", nativeUnit: "count", status: "untested" }),
+  page({
+    providerMetric: "page_fans",
+    internalMetric: "fans",
+    nativeUnit: "count",
+    status: "empty",
+    safeLimitation: "Live production response (2026-08-01): field accepted, no error, but no value returned.",
+  }),
+  page({
+    providerMetric: "page_fan_adds_unique",
+    internalMetric: "fanAddsUnique",
+    nativeUnit: "count",
+    status: "empty",
+    safeLimitation: "Live production response (2026-08-01): field accepted, no error, but no value returned.",
+  }),
+  page({
+    providerMetric: "page_fan_removes_unique",
+    internalMetric: "fanRemovesUnique",
+    nativeUnit: "count",
+    status: "empty",
+    safeLimitation: "Live production response (2026-08-01): field accepted, no error, but no value returned.",
+  }),
+  page({
+    providerMetric: "page_views_total",
+    internalMetric: "pageViewsTotal",
+    nativeUnit: "count",
+    status: "available",
+    safeLimitation: "Live production response (2026-08-01): confirmed supported (value 0).",
+  }),
   page({
     providerMetric: "page_posts_impressions",
     internalMetric: "postsImpressions",
     nativeUnit: "count",
-    status: "untested",
-    safeLimitation: "Aggregate impressions across all of the Page's posts for the period — distinct from any single post's own impressions.",
+    status: "empty",
+    safeLimitation: "Live production response (2026-08-01): field accepted, no error, but no value returned. Aggregate impressions across all of the Page's posts for the period — distinct from any single post's own impressions.",
   }),
   page({
     providerMetric: "page_total_media_view_unique",
     internalMetric: "totalMediaViewUnique",
     nativeUnit: "count",
-    status: "untested",
-    safeLimitation: "Meta's documented replacement direction for several deprecated unique-reach/impression metrics.",
+    status: "available",
+    safeLimitation: "Live production response (2026-08-01): confirmed supported (value 0) — Meta's documented replacement direction for several deprecated unique-reach/impression metrics.",
   }),
 ];
