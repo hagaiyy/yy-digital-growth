@@ -52,9 +52,34 @@ function missingFacebookConfigVars(): string[] {
   return missing;
 }
 
+// Meta's own error responses are a structured `{ error: { type, code,
+// error_subcode, fbtrace_id, message } }` shape. `type`/`code`/
+// `error_subcode`/`fbtrace_id` are diagnostic codes Meta documents for
+// developer support and never contain a token, secret, or request URL —
+// safe to surface. The free-text `message` is deliberately excluded,
+// consistent with never echoing platform response text back to the user.
+async function safeMetaErrorSuffix(response: Response): Promise<string> {
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { type?: string; code?: number; error_subcode?: number; fbtrace_id?: string };
+    };
+    const meta = body.error;
+    if (!meta) return "";
+    const parts = [
+      meta.type ? `type=${meta.type}` : null,
+      typeof meta.code === "number" ? `code=${meta.code}` : null,
+      typeof meta.error_subcode === "number" ? `subcode=${meta.error_subcode}` : null,
+      meta.fbtrace_id ? `fbtrace_id=${meta.fbtrace_id}` : null,
+    ].filter((part): part is string => part !== null);
+    return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+  } catch {
+    return "";
+  }
+}
+
 async function parseJsonOrThrow<T>(response: Response, safeMessage: string): Promise<T> {
   if (!response.ok) {
-    throw new ConnectorError("failed", safeMessage);
+    throw new ConnectorError("failed", `${safeMessage}${await safeMetaErrorSuffix(response)}`);
   }
   try {
     return (await response.json()) as T;
