@@ -36,10 +36,11 @@ const OAUTH_SCOPE = "public_profile,pages_show_list,pages_read_engagement,read_i
 // fields (likes/comments summary, shares) are proven to require a
 // permission this app's Page token does not have (live-tested: rejected
 // everywhere with OAuthException code=10) and are fetched independently,
-// per post, in fetchPagePostMetrics instead. `type`/`status_type` are
-// legacy fields Meta still returns on Page posts and are the only
+// per post, in fetchPagePostMetrics instead. `status_type` is the only
 // documented signal for a post with no attachment at all (a plain text
-// status update).
+// status update) — the legacy `type` field is deliberately never
+// requested: live-tested and confirmed rejected with OAuthException
+// code=12 ("deprecated") for this app's Page token.
 interface FacebookPostNode {
   id: string;
   message?: string;
@@ -48,7 +49,6 @@ interface FacebookPostNode {
   full_picture?: string;
   attachments?: { data?: Array<{ type?: string; media_type?: string }> };
   status_type?: string;
-  type?: string;
 }
 
 export interface FacebookManagedPage {
@@ -538,17 +538,21 @@ export class FacebookConnector implements PlatformConnector {
     const url = new URL(`${GRAPH_API_BASE}/${pageId}/posts`);
     // Stage A — content discovery only, safe metadata never gated behind
     // an engagement-summary permission. id, created_time, message,
-    // permalink_url, attachments{type,media_type}, full_picture are
-    // proven safe by live isolation testing (facebookPageFields
-    // diagnostic): all either supported or merely empty, never rejected.
-    // status_type/type are added for classification only (see
-    // mapFacebookContentType). likes.summary/comments.summary are
-    // deliberately never requested here — they are proven to require a
-    // permission this app's Page token does not always have and are
-    // fetched independently, per post, in fetchPagePostMetrics instead.
+    // permalink_url, attachments{type,media_type}, full_picture,
+    // status_type are proven safe by live isolation testing
+    // (facebookPageFields / facebook-fields-diagnostic): all either
+    // supported or merely empty, never rejected. The legacy `type` field
+    // is deliberately excluded — live-tested and confirmed rejected with
+    // OAuthException code=12 ("this field is deprecated") for this app's
+    // Page token, on 2026-08-01, after being added without independent
+    // testing first and taking the entire Page connection down.
+    // likes.summary/comments.summary are deliberately never requested
+    // here either — they are proven to require a permission this app's
+    // Page token does not always have and are fetched independently, per
+    // post, in fetchPagePostMetrics instead.
     url.searchParams.set(
       "fields",
-      "id,created_time,message,permalink_url,attachments{type,media_type},full_picture,status_type,type",
+      "id,created_time,message,permalink_url,attachments{type,media_type},full_picture,status_type",
     );
     url.searchParams.set("limit", String(limit));
     url.searchParams.set("access_token", pageAccessToken);
@@ -568,7 +572,10 @@ export class FacebookConnector implements PlatformConnector {
       const attachment = node.attachments?.data?.[0];
       return {
         externalContentId: node.id,
-        contentType: mapFacebookContentType(attachment?.type, attachment?.media_type, node.type, node.status_type),
+        // The legacy `type` field is never requested (see above) — its
+        // provider-type argument is always undefined, and classification
+        // falls through to attachments and status_type only.
+        contentType: mapFacebookContentType(attachment?.type, attachment?.media_type, undefined, node.status_type),
         caption: node.message ?? null,
         permalink: node.permalink_url ?? null,
         thumbnailUrl: node.full_picture ?? null,
@@ -576,7 +583,6 @@ export class FacebookConnector implements PlatformConnector {
         platformData: {
           attachment_type: attachment?.type,
           attachment_media_type: attachment?.media_type,
-          provider_type: node.type,
           provider_status_type: node.status_type,
         },
       };
