@@ -106,6 +106,13 @@ function toMetricRecordStatus(reason: MetricFailureReason): MetricRecordStatus {
 // generic-rejection error.
 const FACEBOOK_DISTRIBUTION_REQUIRED_SUBCODE = 2207086;
 
+// Fixed, deliberately short user-facing text for these three metrics —
+// the underlying status still distinguishes *why* (deprecated /
+// noFacebookDistribution / notCrossposted, see below) for internal
+// classification and any future divergent handling, but the table must
+// never show a longer explanation for these specific metrics.
+const NOT_AVAILABLE_THROUGH_CURRENT_API = "Not available through current API";
+
 // Live-proven, evidence-gated overrides for three Reel metrics whose
 // generic classification would either hide them entirely
 // (invalidForContentType, excluded from the UI) or mislabel a known,
@@ -119,10 +126,7 @@ function refineReelMetricStatus(
   error: MetaSafeError | null,
 ): { status: MetricRecordStatus; safeReasonMessage: string } | null {
   if (internalMetric === "plays" && error?.type === "IGApiException" && error.code === 100) {
-    return {
-      status: "deprecated",
-      safeReasonMessage: "Not returned for this media — views is available instead.",
-    };
+    return { status: "deprecated", safeReasonMessage: NOT_AVAILABLE_THROUGH_CURRENT_API };
   }
   if (
     (internalMetric === "facebookViews" || internalMetric === "crosspostedViews") &&
@@ -130,8 +134,8 @@ function refineReelMetricStatus(
     error.subcode === FACEBOOK_DISTRIBUTION_REQUIRED_SUBCODE
   ) {
     return internalMetric === "facebookViews"
-      ? { status: "noFacebookDistribution", safeReasonMessage: "No Facebook distribution for this media." }
-      : { status: "notCrossposted", safeReasonMessage: "This item was not crossposted to Facebook." };
+      ? { status: "noFacebookDistribution", safeReasonMessage: NOT_AVAILABLE_THROUGH_CURRENT_API }
+      : { status: "notCrossposted", safeReasonMessage: NOT_AVAILABLE_THROUGH_CURRENT_API };
   }
   return null;
 }

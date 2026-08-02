@@ -18,7 +18,8 @@ test("Instagram Reel keeps non-invalidForContentType metrics visible (not exclud
   const plays = metrics.find((m) => m.internalMetric === "plays");
   assert.ok(plays, "deprecated metrics stay in the relevant list, just with their real status");
   assert.equal(plays?.canonicalStatus, "deprecated");
-  assert.equal(plays?.reason, "Not returned for this media — views is available instead.");
+  // Fixed, short user-facing text — no longer explanation in the table.
+  assert.equal(plays?.reason, "Not available through current API");
 });
 
 test("Instagram Reel classifies facebook_views/crossposted_views contextually, not as generic unsupported", () => {
@@ -27,8 +28,8 @@ test("Instagram Reel classifies facebook_views/crossposted_views contextually, n
   const crosspostedViews = metrics.find((m) => m.internalMetric === "crosspostedViews");
   assert.equal(facebookViews?.canonicalStatus, "noFacebookDistribution");
   assert.equal(crosspostedViews?.canonicalStatus, "notCrossposted");
-  assert.ok(facebookViews?.reason);
-  assert.ok(crosspostedViews?.reason);
+  assert.equal(facebookViews?.reason, "Not available through current API");
+  assert.equal(crosspostedViews?.reason, "Not available through current API");
 });
 
 test("Facebook imagePost includes likes/comments as available and shares as empty", () => {

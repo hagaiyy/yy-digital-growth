@@ -71,7 +71,9 @@ export function humanizeInternalMetricName(internalMetric: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+// "milliseconds" is deliberately absent — that unit is displayed via
+// formatMetricDisplayValue's own seconds conversion, never this raw
+// suffix table (see metricValueFormatting.ts).
 export const NATIVE_UNIT_SUFFIX: Record<string, string> = {
-  milliseconds: "ms",
   percentage: "%",
 };

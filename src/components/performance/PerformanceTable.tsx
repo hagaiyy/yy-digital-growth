@@ -6,7 +6,8 @@ import type { Platform } from "@/domain/models/PlatformConnection";
 import type { ContentType } from "@/domain/models/ImportedContent";
 import type { PerformanceTableData, TableMetricCell, TableRow, TableTimeframeCell } from "@/application/services/PerformanceViewService";
 import { TIMEFRAME_KEYS, TIMEFRAME_LABELS, type TimeframeKey } from "@/application/performance/timeframeSnapshotSelection";
-import { humanizeInternalMetricName, NATIVE_UNIT_SUFFIX } from "@/application/performance/labels";
+import { humanizeInternalMetricName } from "@/application/performance/labels";
+import { formatMetricDisplayValue, stripMillisecondLabelSuffix } from "@/application/performance/metricValueFormatting";
 import { METRIC_STATUS_LABEL, METRIC_STATUS_TONE } from "@/components/performance/metricStatusStyles";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -30,12 +31,6 @@ function contentCaptionText(row: TableRow): string {
   return row.title || row.caption || "(no caption)";
 }
 
-function formatMetricValue(cell: TableMetricCell): string {
-  if (cell.value === null || cell.value === undefined) return "—";
-  const suffix = NATIVE_UNIT_SUFFIX[cell.nativeUnit] ?? "";
-  return suffix ? `${cell.value} ${suffix}` : String(cell.value);
-}
-
 function MetricRow({ cell }: { cell: TableMetricCell }) {
   const tone = METRIC_STATUS_TONE[cell.status];
   const isValueBearing = cell.status === "available" || cell.status === "supported";
@@ -44,12 +39,13 @@ function MetricRow({ cell }: { cell: TableMetricCell }) {
   // it's also the tooltip, so hovering always shows the full sentence
   // even when the inline text is short.
   const displayText = cell.reason ?? METRIC_STATUS_LABEL[cell.status];
+  const label = stripMillisecondLabelSuffix(humanizeInternalMetricName(cell.internalMetric), cell.nativeUnit);
   return (
     <div className="metric-row" title={displayText}>
       <span className={`status-dot status-dot-${tone}`} />
-      <span className="metric-row-label">{humanizeInternalMetricName(cell.internalMetric)}</span>
+      <span className="metric-row-label">{label}</span>
       <span className="metric-row-value">
-        {isValueBearing ? formatMetricValue(cell) : <span className="text-muted">{displayText}</span>}
+        {isValueBearing ? formatMetricDisplayValue(cell.value, cell.nativeUnit) : <span className="text-muted">{displayText}</span>}
       </span>
     </div>
   );

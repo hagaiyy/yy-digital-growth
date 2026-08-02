@@ -181,9 +181,9 @@ test("facebook_views and crossposted_views are classified contextually from the 
     const fbViews = outcome.metricRecords?.find((r) => r.internalMetric === "facebookViews");
     const crossposted = outcome.metricRecords?.find((r) => r.internalMetric === "crosspostedViews");
     assert.equal(fbViews?.status, "noFacebookDistribution");
-    assert.equal(fbViews?.safeReasonMessage, "No Facebook distribution for this media.");
+    assert.equal(fbViews?.safeReasonMessage, "Not available through current API");
     assert.equal(crossposted?.status, "notCrossposted");
-    assert.equal(crossposted?.safeReasonMessage, "This item was not crossposted to Facebook.");
+    assert.equal(crossposted?.safeReasonMessage, "Not available through current API");
     assert.notEqual(fbViews?.status, "unsupported");
     assert.notEqual(crossposted?.status, "unsupported");
   } finally {

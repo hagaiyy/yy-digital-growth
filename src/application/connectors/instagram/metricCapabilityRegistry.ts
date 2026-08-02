@@ -178,7 +178,7 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     nativeUnit: "count",
     status: "deprecated",
     lastVerifiedDate: LIVE_2026_08_02,
-    safeLimitation: "Not returned for this media — views is available instead.",
+    safeLimitation: "Not available through current API",
   }),
   media({
     contentType: "reel",
@@ -263,7 +263,7 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     nativeUnit: "count",
     status: "noFacebookDistribution",
     lastVerifiedDate: LIVE_2026_08_02,
-    safeLimitation: "No Facebook distribution for this media.",
+    safeLimitation: "Not available through current API",
   }),
   media({
     contentType: "reel",
@@ -272,7 +272,7 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     nativeUnit: "count",
     status: "notCrossposted",
     lastVerifiedDate: LIVE_2026_08_02,
-    safeLimitation: "This item was not crossposted to Facebook.",
+    safeLimitation: "Not available through current API",
   }),
 
   // ---------------------------------------------------------------
