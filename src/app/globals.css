@@ -28,32 +28,6 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --color-bg: #14161a;
-    --color-surface: #1c1f24;
-    --color-surface-alt: #20232a;
-    --color-border: #2c313a;
-    --color-border-strong: #3a4048;
-    --color-text: #e6e8eb;
-    --color-text-muted: #9aa3ad;
-
-    --color-accent: #5b9bff;
-    --color-accent-contrast: #0b0d10;
-    --color-accent-bg: #1c2b45;
-
-    --color-success: #3fbf80;
-    --color-success-bg: #163227;
-    --color-warning: #e0a941;
-    --color-warning-bg: #3a2c14;
-    --color-danger: #ef6a62;
-    --color-danger-bg: #3a1f1d;
-    --color-muted: #9aa3ad;
-    --color-muted-bg: #262a31;
-  }
-}
-
 * {
   box-sizing: border-box;
 }
