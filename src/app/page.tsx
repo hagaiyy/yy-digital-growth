@@ -300,7 +300,13 @@ export default function MainDashboardPage() {
   const pinterest = findConnection(CONNECTION_IDS.pinterest);
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1.5rem" }}>
+    <main
+      style={{
+        maxWidth: activeTab === "performance" ? "100%" : 720,
+        margin: "0 auto",
+        padding: "2rem 1.5rem",
+      }}
+    >
       <h1>Main Dashboard</h1>
 
       {banner && <p style={{ color: "var(--color-accent)" }}>{banner}</p>}

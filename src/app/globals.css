@@ -276,15 +276,27 @@ code {
 
 /* Performance table */
 .table-wrap {
-  overflow-x: auto;
+  width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  /* Fallback for genuinely small screens only — on desktop the media
+     query below switches this to visible so the table just uses the
+     page's own width instead of scrolling inside a narrow nested box. */
+  overflow-x: auto;
 }
 .performance-table {
   border-collapse: collapse;
-  width: 100%;
+  /* Never smaller than the container, but free to grow past it to fit
+     every visible metric column without compressing them. */
+  min-width: 100%;
+  width: max-content;
   font-size: 0.85rem;
   background: var(--color-surface);
+}
+@media (min-width: 900px) {
+  .table-wrap {
+    overflow-x: visible;
+  }
 }
 .performance-table th,
 .performance-table td {
@@ -341,7 +353,7 @@ code {
 }
 
 .timeframe-cell {
-  min-width: 160px;
+  min-width: 220px;
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
