@@ -8,7 +8,9 @@ import type { PerformanceTableData, TableMetricCell, TableRow, TableTimeframeCel
 import { TIMEFRAME_KEYS, TIMEFRAME_LABELS, type TimeframeKey } from "@/application/performance/timeframeSnapshotSelection";
 import { humanizeInternalMetricName } from "@/application/performance/labels";
 import { formatMetricDisplayValue, stripMillisecondLabelSuffix } from "@/application/performance/metricValueFormatting";
-import { METRIC_STATUS_LABEL, METRIC_STATUS_TONE } from "@/components/performance/metricStatusStyles";
+import { METRIC_STATUS_TONE } from "@/components/performance/metricStatusStyles";
+import { hasAdditionalExplanation, resolveInlineStatusLabel } from "@/application/performance/metricIssueDisplay";
+import { MetricIssueIndicator } from "@/components/performance/MetricIssueIndicator";
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, options);
@@ -34,19 +36,20 @@ function contentCaptionText(row: TableRow): string {
 function MetricRow({ cell }: { cell: TableMetricCell }) {
   const tone = METRIC_STATUS_TONE[cell.status];
   const isValueBearing = cell.status === "available" || cell.status === "supported";
-  // A metric-specific reason (e.g. "views is available instead") is
-  // always more useful than the generic status label when one exists —
-  // it's also the tooltip, so hovering always shows the full sentence
-  // even when the inline text is short.
-  const displayText = cell.reason ?? METRIC_STATUS_LABEL[cell.status];
+  // Always a short, fixed label inline — the long registry/connector
+  // explanation (cell.reason) never renders directly in the row; it
+  // only ever appears inside MetricIssueIndicator's tooltip.
+  const inlineLabel = resolveInlineStatusLabel(cell.internalMetric, cell.status);
   const label = stripMillisecondLabelSuffix(humanizeInternalMetricName(cell.internalMetric), cell.nativeUnit);
+  const showIssueIndicator = hasAdditionalExplanation(cell.reason, inlineLabel);
   return (
-    <div className="metric-row" title={displayText}>
+    <div className="metric-row">
       <span className={`status-dot status-dot-${tone}`} />
       <span className="metric-row-label">{label}</span>
       <span className="metric-row-value">
-        {isValueBearing ? formatMetricDisplayValue(cell.value, cell.nativeUnit) : <span className="text-muted">{displayText}</span>}
+        {isValueBearing ? formatMetricDisplayValue(cell.value, cell.nativeUnit) : <span className="text-muted">{inlineLabel}</span>}
       </span>
+      {showIssueIndicator && cell.reason && <MetricIssueIndicator message={cell.reason} metricLabel={label} />}
     </div>
   );
 }
