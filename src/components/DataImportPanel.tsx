@@ -9,17 +9,12 @@ import type { ImportedContent } from "@/domain/models/ImportedContent";
 import type { PerformanceSnapshot } from "@/domain/models/PerformanceSnapshot";
 import type { AccountPerformanceSnapshot } from "@/domain/models/AccountPerformanceSnapshot";
 import { CONNECTION_IDS } from "@/domain/connectionIds";
+import { CONNECTION_LABELS } from "@/components/connectionLabels";
+import { ImportStatusIndicator } from "@/components/ImportStatusIndicator";
 
 interface ImportedContentListItem extends ImportedContent {
   latestPerformance: PerformanceSnapshot | null;
 }
-
-const CONNECTION_LABELS: Record<string, string> = {
-  connection_instagram_primary: "Instagram",
-  connection_facebook_account_primary: "Facebook Account",
-  connection_facebook_page_primary: "Facebook Page",
-  connection_pinterest_primary: "Pinterest",
-};
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, options);
@@ -70,7 +65,7 @@ function AccountSnapshotsSection({
     <section style={{ marginTop: "1.5rem" }}>
       <h3>{title}</h3>
       <p>{description}</p>
-      {error && <p style={{ color: "#ff8080" }}>{error}</p>}
+      {error && <p style={{ color: "var(--color-danger)" }}>{error}</p>}
       {snapshots === null && !error && <p>Loading…</p>}
       {snapshots !== null && snapshots.length === 0 && <p>No insights have been collected yet.</p>}
       {snapshots !== null && snapshots.length > 0 && (
@@ -78,7 +73,7 @@ function AccountSnapshotsSection({
           {snapshots.map((snapshot, index) => (
             <div
               key={`${snapshot.period}-${snapshot.timeframe ?? snapshot.since ?? index}`}
-              style={{ border: "1px solid #333", borderRadius: 6, padding: "0.75rem 1rem", marginBottom: "0.75rem" }}
+              style={{ border: "1px solid var(--color-border)", borderRadius: 6, padding: "0.75rem 1rem", marginBottom: "0.75rem" }}
             >
               <p style={{ margin: "0 0 0.25rem" }}>
                 <strong>period: {snapshot.period}</strong>
@@ -266,7 +261,7 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
             Save
           </button>
         </div>
-        {settingsError && <p style={{ color: "#ff8080" }}>{settingsError}</p>}
+        {settingsError && <p style={{ color: "var(--color-danger)" }}>{settingsError}</p>}
       </section>
 
       <section style={{ marginBottom: "1.5rem" }}>
@@ -278,77 +273,16 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
           Import Data
         </button>
         {runInProgress && <p>Importing…</p>}
-        {runError && <p style={{ color: "#ff8080" }}>{runError}</p>}
+        {runError && <p style={{ color: "var(--color-danger)" }}>{runError}</p>}
       </section>
 
       <section style={{ marginBottom: "1.5rem" }}>
-        <h3>Last import summary</h3>
-        {!latestRun && <p>No import has run yet.</p>}
-        {latestRun && (
-          <div>
-            <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.15rem 0.75rem" }}>
-              <dt>Status</dt>
-              <dd>{latestRun.status}</dd>
-              <dt>Started</dt>
-              <dd>{formatTimestamp(latestRun.startedAt)}</dd>
-              <dt>Completed</dt>
-              <dd>{formatTimestamp(latestRun.completedAt)}</dd>
-              <dt>Recent Content Limit used</dt>
-              <dd>{latestRun.recentContentLimit}</dd>
-              <dt>Connections</dt>
-              <dd>{latestRun.totals.connections}</dd>
-              <dt>Requested items</dt>
-              <dd>{latestRun.totals.requestedItems}</dd>
-              <dt>Created</dt>
-              <dd>{latestRun.totals.createdItems}</dd>
-              <dt>Updated</dt>
-              <dd>{latestRun.totals.updatedItems}</dd>
-              <dt>Failed</dt>
-              <dd>{latestRun.totals.failedItems}</dd>
-              <dt>Skipped</dt>
-              <dd>{latestRun.totals.skippedItems}</dd>
-            </dl>
-
-            {latestRun.safeErrorMessage && (
-              <p style={{ color: "#ff8080" }}>{latestRun.safeErrorMessage}</p>
-            )}
-
-            <h4>Per-connection results</h4>
-            {latestRun.connectionResults.map((result) => (
-              <div
-                key={result.connectionId}
-                style={{ border: "1px solid #333", borderRadius: 4, padding: "0.5rem 0.75rem", marginBottom: "0.5rem" }}
-              >
-                <p style={{ margin: "0.25rem 0" }}>
-                  <strong>{CONNECTION_LABELS[result.connectionId] ?? result.platform}</strong> — {result.status}
-                  {typeof result.requestedCount === "number" && (
-                    <>
-                      {" "}
-                      (requested {result.requestedCount}, created {result.createdCount ?? 0}, updated{" "}
-                      {result.updatedCount ?? 0}, failed {result.failedCount ?? 0}, skipped {result.skippedCount ?? 0})
-                    </>
-                  )}
-                </p>
-                {result.safeErrorMessage && <p style={{ color: "#ffcf80" }}>{result.safeErrorMessage}</p>}
-                {result.itemResults && result.itemResults.length > 0 && (
-                  <ul>
-                    {result.itemResults.map((item, index) => (
-                      <li key={`${item.externalContentId ?? index}`}>
-                        [{item.status}] {item.contentLabel ?? item.externalContentId ?? "unknown item"}
-                        {item.safeMessage ? ` — ${item.safeMessage}` : ""}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+        <ImportStatusIndicator importRun={latestRun} />
       </section>
 
       <section>
         <h3>Imported content</h3>
-        {itemsError && <p style={{ color: "#ff8080" }}>{itemsError}</p>}
+        {itemsError && <p style={{ color: "var(--color-danger)" }}>{itemsError}</p>}
         {items === null && !itemsError && <p>Loading imported content…</p>}
         {items !== null && items.length === 0 && <p>No content has been imported yet.</p>}
         {items !== null && items.length > 0 && (
@@ -356,7 +290,7 @@ export function DataImportPanel({ connections }: { connections: PlatformConnecti
             {items.map((item) => (
               <div
                 key={item.importedContentId}
-                style={{ border: "1px solid #333", borderRadius: 6, padding: "0.75rem 1rem", marginBottom: "0.75rem" }}
+                style={{ border: "1px solid var(--color-border)", borderRadius: 6, padding: "0.75rem 1rem", marginBottom: "0.75rem" }}
               >
                 <div style={{ display: "flex", gap: "0.75rem" }}>
                   {item.thumbnailUrl && (

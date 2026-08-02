@@ -113,32 +113,9 @@ export function LocalSetupModal({
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.6)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 1000,
-      }}
-    >
-      <div
-        style={{
-          background: "#111",
-          border: "1px solid #333",
-          borderRadius: 8,
-          padding: "1.5rem",
-          maxWidth: 480,
-          width: "90%",
-          maxHeight: "85vh",
-          overflowY: "auto",
-        }}
-      >
-        <p style={{ margin: "0 0 0.75rem", fontSize: "0.8rem", color: "#9ad1ff", textTransform: "uppercase" }}>
+    <div role="dialog" aria-modal="true" className="modal-overlay">
+      <div className="modal-panel" style={{ maxWidth: 480 }}>
+        <p style={{ margin: "0 0 0.75rem", fontSize: "0.8rem", color: "var(--color-accent)", textTransform: "uppercase" }}>
           Local Development Setup
         </p>
         <h2 style={{ marginTop: 0 }}>Platform: {platformLabel}</h2>
@@ -157,7 +134,7 @@ export function LocalSetupModal({
             return (
               <div key={name} style={{ marginBottom: "1rem" }}>
                 <label style={{ display: "block", marginBottom: "0.25rem" }}>{def.label}</label>
-                <p style={{ fontSize: "0.85rem", color: "#aaa", margin: "0 0 0.5rem" }}>{def.description}</p>
+                <p className="text-muted" style={{ fontSize: "0.85rem", margin: "0 0 0.5rem" }}>{def.description}</p>
                 <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
                   <button type="button" onClick={() => void handleGenerateKey()} disabled={generating}>
                     {generating ? "Generating..." : "Generate Secure Key"}
@@ -186,13 +163,13 @@ export function LocalSetupModal({
                 onChange={(event) => setValues((prev) => ({ ...prev, [name]: event.target.value }))}
                 style={{ width: "100%" }}
               />
-              <p style={{ fontSize: "0.85rem", color: "#aaa", margin: "0.25rem 0 0" }}>{def.description}</p>
+              <p className="text-muted" style={{ fontSize: "0.85rem", margin: "0.25rem 0 0" }}>{def.description}</p>
             </div>
           );
         })}
 
-        {error && <p style={{ color: "#ff8080" }}>{error}</p>}
-        {savedMessage && <p style={{ color: "#8adf8a" }}>{savedMessage}</p>}
+        {error && <p className="text-danger">{error}</p>}
+        {savedMessage && <p className="text-success">{savedMessage}</p>}
 
         {restartRequired && (
           <div style={{ marginBottom: "1rem", display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>

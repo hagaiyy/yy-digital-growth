@@ -1,5 +1,57 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-surface-alt: #fafbfc;
+  --color-border: #e0e3e8;
+  --color-border-strong: #c7cbd3;
+  --color-text: #1f2328;
+  --color-text-muted: #6b7280;
+
+  --color-accent: #2f6fed;
+  --color-accent-contrast: #ffffff;
+  --color-accent-bg: #eaf1fe;
+
+  --color-success: #1a7f4b;
+  --color-success-bg: #e7f6ee;
+  --color-warning: #a3620a;
+  --color-warning-bg: #fdf1de;
+  --color-danger: #b3261e;
+  --color-danger-bg: #fbe9e7;
+  --color-muted: #6b7280;
+  --color-muted-bg: #eef0f3;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --color-bg: #14161a;
+    --color-surface: #1c1f24;
+    --color-surface-alt: #20232a;
+    --color-border: #2c313a;
+    --color-border-strong: #3a4048;
+    --color-text: #e6e8eb;
+    --color-text-muted: #9aa3ad;
+
+    --color-accent: #5b9bff;
+    --color-accent-contrast: #0b0d10;
+    --color-accent-bg: #1c2b45;
+
+    --color-success: #3fbf80;
+    --color-success-bg: #163227;
+    --color-warning: #e0a941;
+    --color-warning-bg: #3a2c14;
+    --color-danger: #ef6a62;
+    --color-danger-bg: #3a1f1d;
+    --color-muted: #9aa3ad;
+    --color-muted-bg: #262a31;
+  }
 }
 
 * {
@@ -7,42 +59,331 @@
 }
 
 body {
-  margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  background: #0d0d0d;
-  color: #e6e6e6;
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
   line-height: 1.5;
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 600;
 }
 
 a {
-  color: #6ea8fe;
+  color: var(--color-accent);
 }
 
 button {
   font-family: inherit;
-  font-size: 0.95rem;
-  padding: 0.4rem 0.9rem;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background: #1c1c1c;
-  color: #e6e6e6;
+  font-size: 0.9rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
-  border-color: #6ea8fe;
+  border-color: var(--color-accent);
 }
 
 button:disabled {
-  opacity: 0.5;
   cursor: not-allowed;
+  opacity: 0.55;
 }
 
-select {
+select,
+input {
   font-family: inherit;
-  background: #1c1c1c;
-  color: #e6e6e6;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 0.3rem 0.5rem;
+  font-size: 0.9rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+}
+
+code {
+  font-family: var(--font-mono);
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+/* Utility text tones */
+.text-danger {
+  color: var(--color-danger);
+}
+.text-warning {
+  color: var(--color-warning);
+}
+.text-success {
+  color: var(--color-success);
+}
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+/* Generic surfaces */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+}
+
+.btn {
+  border-radius: var(--radius-sm);
+}
+.btn-primary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+.btn-secondary {
+  background: var(--color-surface);
+}
+.btn-small {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.2rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+.detail-grid dt {
+  color: var(--color-text-muted);
+}
+
+/* Status dot used everywhere a data state needs a compact color cue */
+.status-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  flex: none;
+}
+.status-dot-success {
+  background: var(--color-success);
+}
+.status-dot-warning {
+  background: var(--color-warning);
+}
+.status-dot-danger {
+  background: var(--color-danger);
+}
+.status-dot-muted {
+  background: var(--color-muted);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 22, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+.modal-panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  max-width: 640px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+/* Import status indicator */
+.import-status-indicator {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  text-align: start;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.9rem;
+}
+.import-status-indicator .status-dot {
+  margin-top: 0.35rem;
+}
+.import-status-indicator-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  font-size: 0.85rem;
+}
+.import-status-indicator-text > span:first-child {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Top-level and performance sub-navigation */
+.tab-nav {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 1.25rem;
+}
+.tab-button {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tab-button-active {
+  border-bottom-color: var(--color-accent);
+  color: var(--color-text);
+  font-weight: 600;
+}
+.tab-count {
+  background: var(--color-muted-bg);
+  color: var(--color-text-muted);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  padding: 0.05rem 0.4rem;
+}
+
+/* Metric visibility toolbar */
+.metric-visibility-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+.metric-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--color-accent-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--color-text);
+}
+.metric-chip-hidden {
+  background: var(--color-muted-bg);
+}
+.metric-chip-remove {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+.unhide-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  background: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+/* Performance table */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.performance-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+  background: var(--color-surface);
+}
+.performance-table th,
+.performance-table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.6rem 0.75rem;
+  text-align: start;
+  vertical-align: top;
+}
+.performance-table th {
+  background: var(--color-surface-alt);
+  color: var(--color-text-muted);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.performance-table .col-content {
+  min-width: 220px;
+  position: sticky;
+  inset-inline-start: 0;
+  background: var(--color-surface);
+}
+.performance-table th.col-content {
+  background: var(--color-surface-alt);
+}
+.performance-table .col-published {
+  min-width: 130px;
+  white-space: nowrap;
+}
+
+.content-cell {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+}
+.content-thumbnail {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex: none;
+  border: 1px solid var(--color-border);
+}
+.content-thumbnail-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-muted-bg);
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+.content-caption {
+  font-size: 0.85rem;
+  max-width: 320px;
+}
+
+.timeframe-cell {
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.metric-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+.metric-row-label {
+  color: var(--color-text-muted);
+}
+.metric-row-value {
+  margin-inline-start: auto;
+  font-weight: 600;
+  direction: ltr;
+  unicode-bidi: isolate;
 }

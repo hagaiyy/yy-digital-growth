@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { isEligibleDataImportSource, type PlatformConnection } from "@/domain/models/PlatformConnection";
 import { CONNECTION_IDS } from "@/domain/connectionIds";
 import { DataImportPanel } from "@/components/DataImportPanel";
+import { PerformanceView } from "@/components/performance/PerformanceView";
 import { getConnectionActionButtons } from "@/app/connectionActionButtons";
 import { resolveDisplayedErrorMessage } from "@/app/connectionMessages";
 import { LocalSetupModal } from "@/components/LocalSetupModal";
@@ -33,7 +34,7 @@ interface EnvironmentVariableStatus {
   configured: boolean;
 }
 
-type Tab = "connections" | "import";
+type Tab = "connections" | "import" | "performance";
 
 interface FacebookPageOption {
   id: string;
@@ -102,14 +103,14 @@ function ConnectionCard({
   return (
     <section
       style={{
-        border: "1px solid #333",
+        border: "1px solid var(--color-border)",
         borderRadius: 6,
         padding: "1rem 1.25rem",
         marginBottom: "1rem",
       }}
     >
       <h3 style={{ marginTop: 0, marginBottom: subtitle ? "0.15rem" : undefined }}>{title}</h3>
-      {subtitle && <p style={{ marginTop: 0, marginBottom: "0.75rem", color: "#9aa4b2" }}>{subtitle}</p>}
+      {subtitle && <p style={{ marginTop: 0, marginBottom: "0.75rem", color: "var(--color-text-muted)" }}>{subtitle}</p>}
       <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.15rem 0.75rem", margin: 0 }}>
         <dt>Status</dt>
         <dd>{status}</dd>
@@ -142,10 +143,10 @@ function ConnectionCard({
       </dl>
 
       {(connection?.safeErrorMessage || errorMessage) && (
-        <p style={{ color: "#ff8080" }}>{resolveDisplayedErrorMessage(errorMessage, connection?.safeErrorMessage)}</p>
+        <p style={{ color: "var(--color-danger)" }}>{resolveDisplayedErrorMessage(errorMessage, connection?.safeErrorMessage)}</p>
       )}
       {!errorMessage && !connection?.safeErrorMessage && successMessage && (
-        <p style={{ color: "#8adf8a" }}>{successMessage}</p>
+        <p style={{ color: "var(--color-success)" }}>{successMessage}</p>
       )}
 
       <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", flexWrap: "wrap" }}>
@@ -302,16 +303,16 @@ export default function MainDashboardPage() {
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1.5rem" }}>
       <h1>Main Dashboard</h1>
 
-      {banner && <p style={{ color: "#9ad1ff" }}>{banner}</p>}
-      {loadError && <p style={{ color: "#ff8080" }}>{loadError}</p>}
+      {banner && <p style={{ color: "var(--color-accent)" }}>{banner}</p>}
+      {loadError && <p style={{ color: "var(--color-danger)" }}>{loadError}</p>}
 
-      <nav style={{ display: "flex", gap: "1rem", borderBottom: "1px solid #333", marginBottom: "1.5rem" }}>
+      <nav style={{ display: "flex", gap: "1rem", borderBottom: "1px solid var(--color-border)", marginBottom: "1.5rem" }}>
         <button
           type="button"
           onClick={() => setActiveTab("connections")}
           style={{
             border: "none",
-            borderBottom: activeTab === "connections" ? "2px solid #6ea8fe" : "2px solid transparent",
+            borderBottom: activeTab === "connections" ? "2px solid var(--color-accent)" : "2px solid transparent",
             borderRadius: 0,
             background: "transparent",
             padding: "0.5rem 0",
@@ -325,13 +326,26 @@ export default function MainDashboardPage() {
           disabled={!isDataImportEnabled}
           style={{
             border: "none",
-            borderBottom: activeTab === "import" ? "2px solid #6ea8fe" : "2px solid transparent",
+            borderBottom: activeTab === "import" ? "2px solid var(--color-accent)" : "2px solid transparent",
             borderRadius: 0,
             background: "transparent",
             padding: "0.5rem 0",
           }}
         >
           Data Import
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("performance")}
+          style={{
+            border: "none",
+            borderBottom: activeTab === "performance" ? "2px solid var(--color-accent)" : "2px solid transparent",
+            borderRadius: 0,
+            background: "transparent",
+            padding: "0.5rem 0",
+          }}
+        >
+          Content Performance
         </button>
       </nav>
 
@@ -482,6 +496,12 @@ export default function MainDashboardPage() {
           ) : (
             <p>Connect at least one account before importing data.</p>
           )}
+        </div>
+      )}
+
+      {connections !== null && activeTab === "performance" && (
+        <div>
+          <PerformanceView />
         </div>
       )}
 

@@ -100,4 +100,8 @@ export async function ensureIndexes(db: Db): Promise<void> {
   );
 
   await db.collection("dataImportSettings").createIndex({ settingKey: 1 }, { unique: true });
+
+  await db
+    .collection("metricVisibilityPreferences")
+    .createIndex({ platform: 1, contentType: 1 }, { unique: true });
 }

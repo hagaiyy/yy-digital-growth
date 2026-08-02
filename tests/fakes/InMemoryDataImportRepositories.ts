@@ -31,6 +31,10 @@ import {
 import type { DataImportSettings } from "@/domain/models/DataImportSettings";
 import type { DataImportSettingsRepository } from "@/domain/repositories/DataImportSettingsRepository";
 
+import type { ContentType } from "@/domain/models/ImportedContent";
+import type { MetricVisibilityPreference } from "@/domain/models/MetricVisibilityPreference";
+import type { MetricVisibilityPreferenceRepository } from "@/domain/repositories/MetricVisibilityPreferenceRepository";
+
 export class InMemoryImportedContentRepository implements ImportedContentRepository {
   private readonly records = new Map<string, ImportedContent>();
 
@@ -257,5 +261,43 @@ export class InMemoryDataImportSettingsRepository implements DataImportSettingsR
   async save(settings: DataImportSettings): Promise<DataImportSettings> {
     this.record = { ...settings };
     return this.record;
+  }
+}
+
+export class InMemoryMetricVisibilityPreferenceRepository implements MetricVisibilityPreferenceRepository {
+  private readonly records = new Map<string, MetricVisibilityPreference>();
+
+  private key(platform: string, contentType: string): string {
+    return `${platform}::${contentType}`;
+  }
+
+  async list(): Promise<MetricVisibilityPreference[]> {
+    return Array.from(this.records.values());
+  }
+
+  async findByPlatformAndContentType(
+    platform: MetricVisibilityPreference["platform"],
+    contentType: ContentType,
+  ): Promise<MetricVisibilityPreference | null> {
+    return this.records.get(this.key(platform, contentType)) ?? null;
+  }
+
+  async save(
+    platform: MetricVisibilityPreference["platform"],
+    contentType: ContentType,
+    hiddenMetrics: string[],
+  ): Promise<MetricVisibilityPreference> {
+    const now = new Date().toISOString();
+    const existing = this.records.get(this.key(platform, contentType));
+    const saved: MetricVisibilityPreference = {
+      schemaVersion: "1.0.0",
+      platform,
+      contentType,
+      hiddenMetrics,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.records.set(this.key(platform, contentType), saved);
+    return saved;
   }
 }

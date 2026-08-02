@@ -5,6 +5,7 @@ import { InstagramConnector } from "@/application/connectors/InstagramConnector"
 import { PinterestConnector } from "@/application/connectors/PinterestConnector";
 import { ConnectionService } from "@/application/services/ConnectionService";
 import { DataImportService } from "@/application/services/DataImportService";
+import { PerformanceViewService } from "@/application/services/PerformanceViewService";
 import { getDb } from "@/infrastructure/mongodb/client";
 import { MongoPlatformConnectionRepository } from "@/infrastructure/mongodb/repositories/MongoPlatformConnectionRepository";
 import { MongoPlatformCredentialRepository } from "@/infrastructure/mongodb/repositories/MongoPlatformCredentialRepository";
@@ -13,6 +14,7 @@ import { MongoPerformanceSnapshotRepository } from "@/infrastructure/mongodb/rep
 import { MongoAccountPerformanceSnapshotRepository } from "@/infrastructure/mongodb/repositories/MongoAccountPerformanceSnapshotRepository";
 import { MongoImportRunRepository } from "@/infrastructure/mongodb/repositories/MongoImportRunRepository";
 import { MongoDataImportSettingsRepository } from "@/infrastructure/mongodb/repositories/MongoDataImportSettingsRepository";
+import { MongoMetricVisibilityPreferenceRepository } from "@/infrastructure/mongodb/repositories/MongoMetricVisibilityPreferenceRepository";
 
 export function buildConnectionService(db: Db): ConnectionService {
   return new ConnectionService({
@@ -38,12 +40,22 @@ export function buildDataImportService(db: Db, connectionService: ConnectionServ
   });
 }
 
+export function buildPerformanceViewService(db: Db): PerformanceViewService {
+  return new PerformanceViewService({
+    importedContentRepository: new MongoImportedContentRepository(db),
+    performanceSnapshotRepository: new MongoPerformanceSnapshotRepository(db),
+    metricVisibilityPreferenceRepository: new MongoMetricVisibilityPreferenceRepository(db),
+  });
+}
+
 export async function createServices(): Promise<{
   connectionService: ConnectionService;
   dataImportService: DataImportService;
+  performanceViewService: PerformanceViewService;
 }> {
   const db = await getDb();
   const connectionService = buildConnectionService(db);
   const dataImportService = buildDataImportService(db, connectionService);
-  return { connectionService, dataImportService };
+  const performanceViewService = buildPerformanceViewService(db);
+  return { connectionService, dataImportService, performanceViewService };
 }
