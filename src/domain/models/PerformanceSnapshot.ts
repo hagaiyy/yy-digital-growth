@@ -29,7 +29,24 @@ export type MetricRecordStatus =
   | "accessReviewRequired"
   | "deprecated"
   | "untested"
-  | "providerError";
+  | "providerError"
+  // Contextual, distribution-eligibility-specific states — kept distinct
+  // from the generic "unsupported" because the underlying cause is known
+  // and proven (a specific Meta error, not a rejection of unknown
+  // origin), and because it is an expected non-error state for content
+  // that was never distributed to/crossposted on Facebook, not a
+  // failure. See InstagramConnector's refineReelMetricStatus.
+  | "noFacebookDistribution"
+  | "notCrossposted"
+  // A metric name that is not valid for the API model actually used to
+  // request it (distinct from "deprecated", which implies it once
+  // worked and was later withdrawn).
+  | "invalidForApiModel"
+  // Capability genuinely not yet determined — no live evidence exists
+  // either way. Distinct from "untested" (no candidate has ever been
+  // documented) in that this covers a documented candidate that simply
+  // has not been exercised against real content yet.
+  | "eligibilityUnknown";
 
 export interface MetricRecord {
   providerMetric: string;
@@ -42,6 +59,12 @@ export interface MetricRecord {
   period?: string;
   sourceEndpoint: string;
   safeReasonCode?: string;
+  // Longer, metric-specific human-readable explanation for a
+  // non-value-bearing status — e.g. why "plays" has no value when
+  // "views" does, or why "facebook_views" has none for this specific
+  // media. Optional: most statuses are adequately explained by their
+  // generic label alone.
+  safeReasonMessage?: string;
 }
 
 export interface PerformanceSnapshot {

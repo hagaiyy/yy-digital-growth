@@ -313,7 +313,11 @@ code {
   top: 0;
 }
 .performance-table .col-content {
-  min-width: 220px;
+  min-width: 260px;
+  /* Bounded, not unbounded — a long caption wraps to more lines and the
+     row grows taller, but the column itself never balloons wide enough
+     to force horizontal scrolling on its own. */
+  max-width: 420px;
   position: sticky;
   inset-inline-start: 0;
   background: var(--color-surface);
@@ -330,6 +334,7 @@ code {
   display: flex;
   gap: 0.6rem;
   align-items: flex-start;
+  min-width: 0;
 }
 .content-thumbnail {
   width: 48px;
@@ -349,7 +354,15 @@ code {
 }
 .content-caption {
   font-size: 0.85rem;
-  max-width: 320px;
+  /* Full caption/hashtag text, never truncated: wraps across as many
+     lines as it needs within the bounded .col-content column above,
+     growing the row's height naturally instead of clipping or forcing
+     the column itself wider. */
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .timeframe-cell {

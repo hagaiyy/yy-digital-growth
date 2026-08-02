@@ -103,3 +103,61 @@ test("a record without the additive Instagram-only fields still validates (Faceb
   assert.equal(result.metricRecords, undefined);
   assert.equal(result.contentType, undefined);
 });
+
+test("accepts the contextual distribution-eligibility statuses and safeReasonMessage", () => {
+  const result = validatePerformanceSnapshot({
+    ...valid,
+    contentType: "reel",
+    metricRecords: [
+      {
+        providerMetric: "plays",
+        internalMetric: "plays",
+        value: null,
+        nativeUnit: "count",
+        status: "deprecated",
+        sourceEndpoint: "/insights",
+        safeReasonMessage: "Not returned for this media — views is available instead.",
+      },
+      {
+        providerMetric: "facebook_views",
+        internalMetric: "facebookViews",
+        value: null,
+        nativeUnit: "count",
+        status: "noFacebookDistribution",
+        sourceEndpoint: "/insights",
+        safeReasonMessage: "No Facebook distribution for this media.",
+      },
+      {
+        providerMetric: "crossposted_views",
+        internalMetric: "crosspostedViews",
+        value: null,
+        nativeUnit: "count",
+        status: "notCrossposted",
+        sourceEndpoint: "/insights",
+        safeReasonMessage: "This item was not crossposted to Facebook.",
+      },
+    ],
+  });
+  assert.equal(result.metricRecords?.length, 3);
+  assert.equal(result.metricRecords?.[1]?.status, "noFacebookDistribution");
+});
+
+test("rejects an invalid metric record status", () => {
+  assert.throws(
+    () =>
+      validatePerformanceSnapshot({
+        ...valid,
+        metricRecords: [
+          {
+            providerMetric: "plays",
+            internalMetric: "plays",
+            value: null,
+            nativeUnit: "count",
+            status: "notARealStatus",
+            sourceEndpoint: "/insights",
+          },
+        ],
+      }),
+    ValidationError,
+  );
+});

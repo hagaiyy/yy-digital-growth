@@ -18,6 +18,13 @@ export const METRIC_STATUS_TONE: Record<MetricRecordStatus, StatusTone> = {
   deprecated: "muted",
   untested: "muted",
   providerError: "danger",
+  // Neutral/gray, not red: these mean "not eligible for this specific
+  // item right now", a known and expected non-error state, never a
+  // failure — reserving red strictly for actual request failures.
+  noFacebookDistribution: "muted",
+  notCrossposted: "muted",
+  invalidForApiModel: "muted",
+  eligibilityUnknown: "muted",
 };
 
 export const METRIC_STATUS_LABEL: Record<MetricRecordStatus, string> = {
@@ -30,5 +37,9 @@ export const METRIC_STATUS_LABEL: Record<MetricRecordStatus, string> = {
   accessReviewRequired: "Access review required",
   deprecated: "Deprecated",
   untested: "Untested",
-  providerError: "Provider error",
+  providerError: "Provider request failed",
+  noFacebookDistribution: "No Facebook distribution for this media",
+  notCrossposted: "This item was not crossposted to Facebook",
+  invalidForApiModel: "Not available via this API model",
+  eligibilityUnknown: "Eligibility not yet verified",
 };

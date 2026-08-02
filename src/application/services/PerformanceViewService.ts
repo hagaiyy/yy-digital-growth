@@ -25,6 +25,11 @@ export interface TableMetricCell {
   normalizedUnit?: string;
   value: number | string | null;
   status: MetricRecordStatus;
+  // Metric-specific human-readable explanation for a non-value-bearing
+  // status (e.g. why "plays" has no value when "views" does). A live
+  // MetricRecord's own safeReasonMessage always wins; falls back to the
+  // registry's safeLimitation note when no live record exists yet.
+  reason?: string;
 }
 
 export interface TableTimeframeCell {
@@ -65,6 +70,7 @@ function buildMetricCells(snapshot: PerformanceSnapshot, relevantMetrics: Releva
         normalizedUnit: record.normalizedUnit,
         value: record.value,
         status: record.status,
+        reason: record.safeReasonMessage ?? relevant.reason,
       };
     }
     return {
@@ -73,6 +79,7 @@ function buildMetricCells(snapshot: PerformanceSnapshot, relevantMetrics: Releva
       normalizedUnit: relevant.normalizedUnit,
       value: null,
       status: relevant.canonicalStatus,
+      reason: relevant.reason,
     };
   });
 }

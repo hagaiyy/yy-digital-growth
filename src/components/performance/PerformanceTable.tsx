@@ -23,10 +23,11 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function shortCaption(row: TableRow): string {
-  const text = row.title || row.caption;
-  if (!text) return "(no caption)";
-  return text.length > 90 ? `${text.slice(0, 90)}…` : text;
+// Full caption/hashtag text, never truncated with an ellipsis — the
+// content column wraps and the row grows to fit it (see .content-caption
+// and .performance-table td in globals.css).
+function contentCaptionText(row: TableRow): string {
+  return row.title || row.caption || "(no caption)";
 }
 
 function formatMetricValue(cell: TableMetricCell): string {
@@ -38,12 +39,17 @@ function formatMetricValue(cell: TableMetricCell): string {
 function MetricRow({ cell }: { cell: TableMetricCell }) {
   const tone = METRIC_STATUS_TONE[cell.status];
   const isValueBearing = cell.status === "available" || cell.status === "supported";
+  // A metric-specific reason (e.g. "views is available instead") is
+  // always more useful than the generic status label when one exists —
+  // it's also the tooltip, so hovering always shows the full sentence
+  // even when the inline text is short.
+  const displayText = cell.reason ?? METRIC_STATUS_LABEL[cell.status];
   return (
-    <div className="metric-row" title={METRIC_STATUS_LABEL[cell.status]}>
+    <div className="metric-row" title={displayText}>
       <span className={`status-dot status-dot-${tone}`} />
       <span className="metric-row-label">{humanizeInternalMetricName(cell.internalMetric)}</span>
       <span className="metric-row-value">
-        {isValueBearing ? formatMetricValue(cell) : <span className="text-muted">{METRIC_STATUS_LABEL[cell.status]}</span>}
+        {isValueBearing ? formatMetricValue(cell) : <span className="text-muted">{displayText}</span>}
       </span>
     </div>
   );
@@ -214,10 +220,10 @@ export function PerformanceTable({ platform, contentType }: { platform: Platform
                       <div className="content-caption">
                         {row.permalink ? (
                           <a href={row.permalink} target="_blank" rel="noreferrer">
-                            {shortCaption(row)}
+                            {contentCaptionText(row)}
                           </a>
                         ) : (
-                          shortCaption(row)
+                          contentCaptionText(row)
                         )}
                       </div>
                     </div>

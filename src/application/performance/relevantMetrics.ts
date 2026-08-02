@@ -9,6 +9,11 @@ export interface RelevantMetric {
   nativeUnit: string;
   normalizedUnit?: string;
   canonicalStatus: MetricRecordStatus;
+  // The registry's own safeLimitation note, if any — used as the UI's
+  // fallback explanation when no live snapshot has recorded this metric
+  // yet (a live MetricRecord's own safeReasonMessage always takes
+  // precedence over this once one exists).
+  reason?: string;
 }
 
 // "invalidForContentType" means the registry has already proven, live,
@@ -29,7 +34,13 @@ export function getRelevantMetricsForContentType(platform: Platform, contentType
   const result: RelevantMetric[] = [];
   const seen = new Set<string>();
 
-  const pushEntry = (entry: { internalMetric: string; nativeUnit: string; normalizedUnit?: string; status: MetricRecordStatus }) => {
+  const pushEntry = (entry: {
+    internalMetric: string;
+    nativeUnit: string;
+    normalizedUnit?: string;
+    status: MetricRecordStatus;
+    safeLimitation?: string;
+  }) => {
     if (EXCLUDED_STATUSES.includes(entry.status)) return;
     if (seen.has(entry.internalMetric)) return;
     seen.add(entry.internalMetric);
@@ -38,6 +49,7 @@ export function getRelevantMetricsForContentType(platform: Platform, contentType
       nativeUnit: entry.nativeUnit,
       normalizedUnit: entry.normalizedUnit,
       canonicalStatus: entry.status,
+      reason: entry.safeLimitation,
     });
   };
 

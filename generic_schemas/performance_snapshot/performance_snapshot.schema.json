@@ -28,12 +28,17 @@
             "accessReviewRequired",
             "deprecated",
             "untested",
-            "providerError"
+            "providerError",
+            "noFacebookDistribution",
+            "notCrossposted",
+            "invalidForApiModel",
+            "eligibilityUnknown"
           ]
         },
         "period": { "type": "string", "minLength": 1 },
         "sourceEndpoint": { "type": "string", "minLength": 1 },
-        "safeReasonCode": { "type": "string", "minLength": 1 }
+        "safeReasonCode": { "type": "string", "minLength": 1 },
+        "safeReasonMessage": { "type": "string", "minLength": 1 }
       }
     }
   },

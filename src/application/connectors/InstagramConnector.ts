@@ -98,6 +98,44 @@ function toMetricRecordStatus(reason: MetricFailureReason): MetricRecordStatus {
   }
 }
 
+// Meta's own documented subcode for "this metric only applies to a Reel
+// actually distributed to multiple places on Facebook" — confirmed live
+// on 4 real Reels (2026-08-02, see scripts/diagnose-instagram-metrics.ts):
+// every facebook_views/crossposted_views request on this account returned
+// exactly this OAuthException/subcode pair, never a permission or
+// generic-rejection error.
+const FACEBOOK_DISTRIBUTION_REQUIRED_SUBCODE = 2207086;
+
+// Live-proven, evidence-gated overrides for three Reel metrics whose
+// generic classification would either hide them entirely
+// (invalidForContentType, excluded from the UI) or mislabel a known,
+// expected non-error state as a request failure (unsupported). Each
+// override only fires when the specific error signature that was
+// actually observed live is present — anything else (e.g. a genuine
+// permission error) falls through to the normal classification below,
+// so this never masks a real problem as an eligibility non-issue.
+function refineReelMetricStatus(
+  internalMetric: string,
+  error: MetaSafeError | null,
+): { status: MetricRecordStatus; safeReasonMessage: string } | null {
+  if (internalMetric === "plays" && error?.type === "IGApiException" && error.code === 100) {
+    return {
+      status: "deprecated",
+      safeReasonMessage: "Not returned for this media — views is available instead.",
+    };
+  }
+  if (
+    (internalMetric === "facebookViews" || internalMetric === "crosspostedViews") &&
+    error?.type === "OAuthException" &&
+    error.subcode === FACEBOOK_DISTRIBUTION_REQUIRED_SUBCODE
+  ) {
+    return internalMetric === "facebookViews"
+      ? { status: "noFacebookDistribution", safeReasonMessage: "No Facebook distribution for this media." }
+      : { status: "notCrossposted", safeReasonMessage: "This item was not crossposted to Facebook." };
+  }
+  return null;
+}
+
 function getConfig() {
   const appId = process.env.INSTAGRAM_APP_ID;
   const appSecret = process.env.INSTAGRAM_APP_SECRET;
@@ -510,6 +548,21 @@ export class InstagramConnector implements PlatformConnector {
           status: "supported",
           period: planned.period,
           sourceEndpoint: planned.endpoint,
+        });
+        return;
+      }
+      const refined = refineReelMetricStatus(planned.internalMetric, error ?? null);
+      if (refined) {
+        failedMetrics.push({ metric: planned.internalMetric, reason: "requestRejected" });
+        metricRecords.push({
+          providerMetric: planned.providerMetric,
+          internalMetric: planned.internalMetric,
+          value: null,
+          nativeUnit: planned.nativeUnit,
+          status: refined.status,
+          period: planned.period,
+          sourceEndpoint: planned.endpoint,
+          safeReasonMessage: refined.safeReasonMessage,
         });
         return;
       }

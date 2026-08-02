@@ -11,11 +11,24 @@ test("Instagram Reel excludes invalidForContentType metrics like impressions", (
   assert.ok(!names.includes("impressions"), "impressions is invalidForContentType for Reel and must be excluded");
 });
 
-test("Instagram Reel keeps untested and unsupported metrics visible (not excluded)", () => {
+test("Instagram Reel keeps non-invalidForContentType metrics visible (not excluded)", () => {
   const metrics = getRelevantMetricsForContentType("instagram", "reel");
+  // "plays" is proven deprecated (superseded by "views"), not hidden —
+  // see metricCapabilityRegistry.ts's 2026-08-02 re-diagnosis.
   const plays = metrics.find((m) => m.internalMetric === "plays");
-  assert.ok(plays, "unsupported metrics stay in the relevant list, just with their real status");
-  assert.equal(plays?.canonicalStatus, "unsupported");
+  assert.ok(plays, "deprecated metrics stay in the relevant list, just with their real status");
+  assert.equal(plays?.canonicalStatus, "deprecated");
+  assert.equal(plays?.reason, "Not returned for this media — views is available instead.");
+});
+
+test("Instagram Reel classifies facebook_views/crossposted_views contextually, not as generic unsupported", () => {
+  const metrics = getRelevantMetricsForContentType("instagram", "reel");
+  const facebookViews = metrics.find((m) => m.internalMetric === "facebookViews");
+  const crosspostedViews = metrics.find((m) => m.internalMetric === "crosspostedViews");
+  assert.equal(facebookViews?.canonicalStatus, "noFacebookDistribution");
+  assert.equal(crosspostedViews?.canonicalStatus, "notCrossposted");
+  assert.ok(facebookViews?.reason);
+  assert.ok(crosspostedViews?.reason);
 });
 
 test("Facebook imagePost includes likes/comments as available and shares as empty", () => {

@@ -115,6 +115,12 @@ function account(entry: {
 }
 
 const LIVE_2026_08_01 = "2026-08-01";
+// Re-diagnosed live against 4 real Reels (both the Instagram API with
+// Instagram Login path used in production, and — to rule out the
+// Facebook/Meta path — the connected Facebook Page's own token against
+// the same media IDs). See scripts/diagnose-instagram-metrics.ts for
+// the exact commands; raw evidence is quoted in each entry below.
+const LIVE_2026_08_02 = "2026-08-02";
 
 export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
   // ---------------------------------------------------------------
@@ -154,14 +160,25 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     lastVerifiedDate: LIVE_2026_08_01,
     safeLimitation: "Rejected IGApiException code=100 for real reel content; Meta docs also mark this metric deprecated for media created after 2024-07-02.",
   }),
+  // Re-diagnosed live on 4 real Reels (2026-08-02, see
+  // scripts/diagnose-instagram-metrics.ts): Meta's own IGApiException
+  // code=100 response enumerates every valid metric name for this
+  // media, and "plays" is not among them — "views" is. "views" was
+  // requested on the same 4 Reels in the same diagnostic and returned
+  // real, distinct values (609/1788/675/295), confirming it is the
+  // current replacement, not a coincidental separate rejection. Not a
+  // permission or content-type-eligibility issue — the metric name
+  // itself no longer exists for Reels in this API version, so it is
+  // classified "deprecated" (matching this file's convention for other
+  // proven-superseded metric names) rather than "unsupported".
   media({
     contentType: "reel",
     providerMetric: "plays",
     internalMetric: "plays",
     nativeUnit: "count",
-    status: "unsupported",
-    lastVerifiedDate: LIVE_2026_08_01,
-    safeLimitation: "Rejected IGApiException code=100 for real reel content; not a metric name found in current Meta documentation.",
+    status: "deprecated",
+    lastVerifiedDate: LIVE_2026_08_02,
+    safeLimitation: "Not returned for this media — views is available instead.",
   }),
   media({
     contentType: "reel",
@@ -217,23 +234,45 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     lastVerifiedDate: LIVE_2026_08_01,
     safeLimitation: "Meta documents this as an estimated, in-development metric — real production values observed (e.g. 61.7, 37.2) are plausible percentages, but Meta's own 'estimated' label means precision is not guaranteed.",
   }),
+  // Re-diagnosed live on 4 real Reels (2026-08-02, see
+  // scripts/diagnose-instagram-metrics.ts): every request for
+  // facebook_views/crossposted_views returned OAuthException code=-1
+  // subcode=2207086 — Meta's own documented explanation for this exact
+  // subcode is that these metrics only return a value for a Reel
+  // actually distributed to multiple places on Facebook. Independently
+  // confirmed (not merely assumed from "a Facebook account is linked"):
+  // GET /{page-id}?fields=instagram_business_account,connected_instagram_account
+  // on the connected Facebook Page's own token returned neither field
+  // at all — the Page is not linked to this (or any) Instagram
+  // account, so Facebook-side distribution/crossposting is structurally
+  // impossible right now. Also tried the alternate Facebook/Meta access
+  // path directly: the Page's own token requesting these exact
+  // Instagram media IDs from graph.facebook.com/v19.0 was rejected with
+  // GraphMethodException code=100 subcode=33 ("object does not exist or
+  // missing permissions"), consistent with — not contradicted by — the
+  // missing link. This is a per-account, per-content-type finding, not
+  // a permanent global judgment: if this Page/account ever links and a
+  // Reel is genuinely distributed to/crossposted on Facebook, it must
+  // be re-tested rather than left at this status (see
+  // InstagramConnector's refineReelMetricStatus, which re-checks the
+  // live error signature on every import rather than hardcoding this).
   media({
     contentType: "reel",
     providerMetric: "facebook_views",
     internalMetric: "facebookViews",
     nativeUnit: "count",
-    status: "unsupported",
-    lastVerifiedDate: LIVE_2026_08_01,
-    safeLimitation: "Live production response: rejected for real reel content that was not crossposted to a Facebook Page.",
+    status: "noFacebookDistribution",
+    lastVerifiedDate: LIVE_2026_08_02,
+    safeLimitation: "No Facebook distribution for this media.",
   }),
   media({
     contentType: "reel",
     providerMetric: "crossposted_views",
     internalMetric: "crosspostedViews",
     nativeUnit: "count",
-    status: "unsupported",
-    lastVerifiedDate: LIVE_2026_08_01,
-    safeLimitation: "Live production response confirms Meta's own documented behavior: rejected because the real reel tested was never actually crossposted to Facebook.",
+    status: "notCrossposted",
+    lastVerifiedDate: LIVE_2026_08_02,
+    safeLimitation: "This item was not crossposted to Facebook.",
   }),
 
   // ---------------------------------------------------------------
