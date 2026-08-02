@@ -21,9 +21,22 @@ export function resolveInlineStatusLabel(internalMetric: string, status: MetricR
 
 // The issue/info indicator is worth showing only when there is more
 // detail available than what's already visible inline — never for a
-// metric with no stored explanation at all (a normal healthy metric
-// with a plain value), and never merely to repeat the same short label
-// a second time behind an icon.
-export function hasAdditionalExplanation(reason: string | undefined, inlineLabel: string): boolean {
-  return Boolean(reason) && reason !== inlineLabel;
+// metric with no stored explanation at all, and never merely to repeat
+// the same short label a second time behind an icon.
+//
+// `isValueBearing` additionally excludes every normal, healthy
+// available/supported metric outright, even if the registry happens to
+// carry a developer-provenance note on it (e.g. "confirmed supported,
+// value 0" or "Meta returns this in ms, don't multiply by 1000") — that
+// kind of note is not a warning the end user needs surfaced, and
+// showing an icon on every healthy value would defeat the point of
+// keeping the table clean. The indicator is reserved for metrics that
+// are NOT plain healthy values: unsupported, deprecated, empty,
+// permission-limited, etc.
+export function hasAdditionalExplanation(
+  reason: string | undefined,
+  inlineLabel: string,
+  isValueBearing: boolean,
+): boolean {
+  return !isValueBearing && Boolean(reason) && reason !== inlineLabel;
 }

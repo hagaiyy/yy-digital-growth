@@ -12,7 +12,7 @@ test("the issue indicator is only rendered when hasAdditionalExplanation says th
     /\{showIssueIndicator && cell\.reason && <MetricIssueIndicator/.test(source),
     "MetricIssueIndicator must be gated on showIssueIndicator (derived from hasAdditionalExplanation), not rendered unconditionally",
   );
-  assert.ok(source.includes("hasAdditionalExplanation(cell.reason, inlineLabel)"));
+  assert.ok(source.includes("hasAdditionalExplanation(cell.reason, inlineLabel, isValueBearing)"));
 });
 
 test("no long diagnostic text (cell.reason) is ever rendered directly inside the metric row's value/label spans", () => {

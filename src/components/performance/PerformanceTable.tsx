@@ -41,7 +41,7 @@ function MetricRow({ cell }: { cell: TableMetricCell }) {
   // only ever appears inside MetricIssueIndicator's tooltip.
   const inlineLabel = resolveInlineStatusLabel(cell.internalMetric, cell.status);
   const label = stripMillisecondLabelSuffix(humanizeInternalMetricName(cell.internalMetric), cell.nativeUnit);
-  const showIssueIndicator = hasAdditionalExplanation(cell.reason, inlineLabel);
+  const showIssueIndicator = hasAdditionalExplanation(cell.reason, inlineLabel, isValueBearing);
   return (
     <div className="metric-row">
       <span className={`status-dot status-dot-${tone}`} />
