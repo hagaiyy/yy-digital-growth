@@ -365,6 +365,18 @@ code {
   word-break: break-word;
 }
 
+.content-type-badge {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: var(--color-muted-bg);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  margin-inline-end: 0.4rem;
+  margin-bottom: 0.2rem;
+}
+
 .timeframe-cell {
   min-width: 220px;
   display: flex;

@@ -16,7 +16,17 @@ export function mapInstagramContentType(
   const productType = mediaProductType?.toUpperCase();
 
   if (productType === "REELS") return "reel";
-  if (productType === "STORY") return "story";
+  // Image and video Stories have independent, separately-tested metric
+  // capabilities (Meta's own Story insights documentation names no
+  // video-specific metric the way Reels do, but per this app's own
+  // rule that must be proven live, not assumed from the docs being
+  // silent) — classification always uses the real media_type, never
+  // an assumption that Stories are always one or the other.
+  if (productType === "STORY") {
+    if (type === "IMAGE") return "imageStory";
+    if (type === "VIDEO") return "videoStory";
+    return "unknownStory";
+  }
   if (type === "CAROUSEL_ALBUM") return "carousel";
   if (type === "VIDEO") return "feedVideo";
   if (type === "IMAGE") return "imagePost";

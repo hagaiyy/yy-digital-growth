@@ -5,6 +5,9 @@ const PLATFORMS: Platform[] = ["instagram", "facebook", "pinterest"];
 const CONTENT_TYPES: ContentType[] = [
   "reel",
   "story",
+  "imageStory",
+  "videoStory",
+  "unknownStory",
   "imagePost",
   "carousel",
   "video",

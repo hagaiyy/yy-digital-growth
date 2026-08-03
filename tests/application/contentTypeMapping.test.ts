@@ -11,8 +11,17 @@ test("maps Instagram Reel to reel", () => {
   assert.equal(mapInstagramContentType("VIDEO", "REELS"), "reel");
 });
 
-test("maps Instagram story product type to story", () => {
-  assert.equal(mapInstagramContentType("VIDEO", "STORY"), "story");
+test("maps an IMAGE Story to imageStory, not the generic story bucket", () => {
+  assert.equal(mapInstagramContentType("IMAGE", "STORY"), "imageStory");
+});
+
+test("maps a VIDEO Story to videoStory, never generalized from imageStory", () => {
+  assert.equal(mapInstagramContentType("VIDEO", "STORY"), "videoStory");
+});
+
+test("maps a Story with neither IMAGE nor VIDEO media_type to unknownStory, never guessed", () => {
+  assert.equal(mapInstagramContentType("AUDIO", "STORY"), "unknownStory");
+  assert.equal(mapInstagramContentType(undefined, "STORY"), "unknownStory");
 });
 
 test("maps Instagram carousel album to carousel", () => {

@@ -10,6 +10,9 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
 export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   reel: "Reels",
   story: "Stories",
+  imageStory: "Stories",
+  videoStory: "Stories",
+  unknownStory: "Stories",
   imagePost: "Images",
   carousel: "Carousels",
   video: "Videos",
@@ -21,6 +24,21 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   videoPin: "Video Pins",
   unknown: "Other",
 };
+
+// Per-row "Story type" badge text — distinct from CONTENT_TYPE_LABELS
+// above (which is for tab labels; imageStory/videoStory/unknownStory
+// never become a tab label themselves, since they always collapse to
+// the shared "story" tab group — see storyGrouping.ts).
+const STORY_TYPE_LABELS: Partial<Record<ContentType, string>> = {
+  imageStory: "Image Story",
+  videoStory: "Video Story",
+  unknownStory: "Unknown Story",
+  story: "Story",
+};
+
+export function storyTypeLabel(contentType: ContentType): string | null {
+  return STORY_TYPE_LABELS[contentType] ?? null;
+}
 
 // Facebook's "imagePost" tab is labeled "Image Posts" (matching this
 // feature's own worked examples) while Instagram keeps the shorter
@@ -44,6 +62,9 @@ const CONTENT_TYPE_ORDER: ContentType[] = [
   "carousel",
   "imagePost",
   "story",
+  "imageStory",
+  "videoStory",
+  "unknownStory",
   "feedVideo",
   "video",
   "linkPost",

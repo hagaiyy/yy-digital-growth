@@ -6,7 +6,7 @@ import type { Platform } from "@/domain/models/PlatformConnection";
 import type { ContentType } from "@/domain/models/ImportedContent";
 import type { PerformanceTableData, TableMetricCell, TableRow, TableTimeframeCell } from "@/application/services/PerformanceViewService";
 import { TIMEFRAME_KEYS, TIMEFRAME_LABELS, type TimeframeKey } from "@/application/performance/timeframeSnapshotSelection";
-import { humanizeInternalMetricName } from "@/application/performance/labels";
+import { humanizeInternalMetricName, storyTypeLabel } from "@/application/performance/labels";
 import { formatMetricDisplayValue, stripMillisecondLabelSuffix } from "@/application/performance/metricValueFormatting";
 import { METRIC_STATUS_TONE } from "@/components/performance/metricStatusStyles";
 import { hasAdditionalExplanation, resolveInlineStatusLabel } from "@/application/performance/metricIssueDisplay";
@@ -204,7 +204,9 @@ export function PerformanceTable({ platform, contentType }: { platform: Platform
               </tr>
             </thead>
             <tbody>
-              {table.rows.map((row) => (
+              {table.rows.map((row) => {
+                const storyType = storyTypeLabel(row.contentType);
+                return (
                 <tr key={row.importedContentId}>
                   <td className="col-content">
                     <div className="content-cell">
@@ -217,6 +219,7 @@ export function PerformanceTable({ platform, contentType }: { platform: Platform
                         </div>
                       )}
                       <div className="content-caption">
+                        {storyType && <span className="content-type-badge">{storyType}</span>}
                         {row.permalink ? (
                           <a href={row.permalink} target="_blank" rel="noreferrer">
                             {contentCaptionText(row)}
@@ -234,7 +237,8 @@ export function PerformanceTable({ platform, contentType }: { platform: Platform
                     </td>
                   ))}
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

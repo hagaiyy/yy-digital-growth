@@ -56,14 +56,14 @@ test("a content type never sends the same metric list as another content type", 
   assert.notDeepEqual(reelMetrics, carouselMetrics);
 });
 
-test("story plan requests every live-confirmed metric and excludes only proven-invalid/deprecated ones", () => {
+test("imageStory plan requests every live-confirmed metric and excludes only proven-invalid/deprecated ones", () => {
   const plan = planInstagramMediaInsightsRequest({
     accountType: "creator",
-    contentType: "story",
+    contentType: "imageStory",
     grantedPermissions: GRANTED,
   });
   // Live-proven 2026-08-03 against a real IMAGE Story — see
-  // metricCapabilityRegistry.ts's Story section.
+  // metricCapabilityRegistry.ts's imageStory section.
   const requested = plan.metricsToRequest.map((m) => m.providerMetric);
   assert.ok(requested.includes("views"));
   assert.ok(requested.includes("navigation"));
@@ -81,6 +81,35 @@ test("story plan requests every live-confirmed metric and excludes only proven-i
   assert.ok(excluded.includes("total_views"));
   assert.ok(excluded.includes("impressions"));
   assert.ok(excluded.includes("reposts"), "reposts is confirmed invalidForApiModel and must never be re-requested");
+});
+
+test("videoStory plan is entirely untested but every candidate is still requested — untested must never disable the planner", () => {
+  const plan = planInstagramMediaInsightsRequest({
+    accountType: "creator",
+    contentType: "videoStory",
+    grantedPermissions: GRANTED,
+  });
+  // Nothing has been live-tested for videoStory yet, so nothing may be
+  // pre-excluded — "untested" is not in NEVER_REQUEST_STATUSES.
+  assert.equal(plan.excludedMetrics.length, 0, "an untested metric must never be pre-excluded from the request");
+  assert.ok(plan.metricsToRequest.length > 0);
+  assert.ok(plan.metricsToRequest.every((m) => m.status === "untested"));
+  const requested = plan.metricsToRequest.map((m) => m.providerMetric);
+  // Same provider metric names as imageStory (Meta's docs name no
+  // video-specific Story metric), but independently untested.
+  assert.ok(requested.includes("views"));
+  assert.ok(requested.includes("navigation"));
+  assert.ok(requested.includes("facebook_views"));
+  assert.ok(requested.includes("reposts"), "even reposts (proven invalidForApiModel for imageStory) starts untested for videoStory, never copied over");
+});
+
+test("imageStory and videoStory plans never share a proven status for the same provider metric", () => {
+  const imagePlan = planInstagramMediaInsightsRequest({ accountType: "creator", contentType: "imageStory", grantedPermissions: GRANTED });
+  const videoPlan = planInstagramMediaInsightsRequest({ accountType: "creator", contentType: "videoStory", grantedPermissions: GRANTED });
+  const imageViews = imagePlan.metricsToRequest.find((m) => m.providerMetric === "views");
+  const videoViews = videoPlan.metricsToRequest.find((m) => m.providerMetric === "views");
+  assert.equal(imageViews?.status, "supported");
+  assert.equal(videoViews?.status, "untested");
 });
 
 test("missing a required permission excludes every candidate with reason permissionRequired", () => {

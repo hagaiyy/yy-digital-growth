@@ -71,6 +71,9 @@
       "enum": [
         "reel",
         "story",
+        "imageStory",
+        "videoStory",
+        "unknownStory",
         "imagePost",
         "carousel",
         "video",

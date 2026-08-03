@@ -146,3 +146,91 @@ test("setHiddenMetrics persists and getHiddenMetrics reads it back, independent 
   assert.deepEqual(await service.getHiddenMetrics("facebook", "imagePost"), ["shares", "views"]);
   assert.deepEqual(await service.getHiddenMetrics("facebook", "linkPost"), []);
 });
+
+test("listTabs merges imageStory and videoStory into one 'Instagram — Stories' tab", async () => {
+  const { service, importedContentRepository } = buildService();
+  await seedContent(importedContentRepository, { platform: "instagram", contentType: "imageStory", externalContentId: "img-story-1" });
+  await seedContent(importedContentRepository, { platform: "instagram", contentType: "videoStory", externalContentId: "vid-story-1" });
+
+  const tabs = await service.listTabs();
+  const storyTabs = tabs.filter((t) => t.platform === "instagram" && t.contentType === "story");
+  assert.equal(storyTabs.length, 1, "imageStory and videoStory must merge into exactly one tab, not two");
+  assert.equal(storyTabs[0]?.itemCount, 2, "the merged tab counts both sub-types");
+  assert.equal(storyTabs[0]?.label, "Instagram — Stories");
+});
+
+test("getTable('instagram','story') returns both imageStory and videoStory rows, each using its OWN content type's relevant metrics", async () => {
+  const { service, importedContentRepository, performanceSnapshotRepository } = buildService();
+  const imageStory = await seedContent(importedContentRepository, {
+    platform: "instagram",
+    contentType: "imageStory",
+    externalContentId: "img-story-1",
+    publishedAt: PUBLISHED_AT,
+  });
+  const videoStory = await seedContent(importedContentRepository, {
+    platform: "instagram",
+    contentType: "videoStory",
+    externalContentId: "vid-story-1",
+    publishedAt: PUBLISHED_AT,
+  });
+  await performanceSnapshotRepository.upsertByHour({
+    schemaVersion: "1.0.0",
+    importedContentId: imageStory.importedContentId,
+    connectionId: imageStory.connectionId,
+    platform: "instagram",
+    snapshotHour: PUBLISHED_AT,
+    collectedAt: PUBLISHED_AT,
+    metrics: { views: 26 },
+    dataCompleteness: "complete",
+    metricRecords: [
+      { providerMetric: "views", internalMetric: "views", value: 26, nativeUnit: "count", status: "available", sourceEndpoint: "/{media-id}/insights" },
+    ] satisfies MetricRecord[],
+  });
+  await performanceSnapshotRepository.upsertByHour({
+    schemaVersion: "1.0.0",
+    importedContentId: videoStory.importedContentId,
+    connectionId: videoStory.connectionId,
+    platform: "instagram",
+    snapshotHour: PUBLISHED_AT,
+    collectedAt: PUBLISHED_AT,
+    metrics: { views: 9 },
+    dataCompleteness: "complete",
+    metricRecords: [
+      { providerMetric: "views", internalMetric: "views", value: 9, nativeUnit: "count", status: "available", sourceEndpoint: "/{media-id}/insights" },
+    ] satisfies MetricRecord[],
+  });
+
+  const table = await service.getTable("instagram", "story");
+  assert.equal(table.rows.length, 2, "both Story sub-types must appear together in the merged table");
+
+  const imageRow = table.rows.find((r) => r.importedContentId === imageStory.importedContentId)!;
+  const videoRow = table.rows.find((r) => r.importedContentId === videoStory.importedContentId)!;
+  assert.equal(imageRow.contentType, "imageStory");
+  assert.equal(videoRow.contentType, "videoStory");
+
+  // Same provider metric ("views") reported with each row's OWN
+  // content type's real evidence — imageStory's proven "available"
+  // must never leak onto videoStory's own record (here also available
+  // from its own real record), proving per-row independence.
+  const imageViews = imageRow.timeframes.latest.metrics.find((m) => m.internalMetric === "views");
+  const videoViews = videoRow.timeframes.latest.metrics.find((m) => m.internalMetric === "views");
+  assert.equal(imageViews?.value, 26);
+  assert.equal(videoViews?.value, 9);
+
+  // A metric imageStory has *proven* invalid (reposts) must fall back
+  // to videoStory's own still-"untested" status on the video row, never
+  // to imageStory's invalidForApiModel verdict.
+  const videoReposts = videoRow.timeframes.latest.metrics.find((m) => m.internalMetric === "reposts");
+  assert.equal(videoReposts?.status, "untested");
+  const imageReposts = imageRow.timeframes.latest.metrics.find((m) => m.internalMetric === "reposts");
+  assert.equal(imageReposts?.status, "invalidForApiModel");
+});
+
+test("getTable('instagram','story') hidden-metrics preference is shared across the merged tab (keyed by the group, not the sub-type)", async () => {
+  const { service } = buildService();
+  await service.setHiddenMetrics("instagram", "story", ["reposts"]);
+  assert.deepEqual(await service.getHiddenMetrics("instagram", "story"), ["reposts"]);
+  // Sub-types themselves have no independent preference record — the
+  // whole tab shares one, matching what the user actually interacts with.
+  assert.deepEqual(await service.getHiddenMetrics("instagram", "imageStory"), []);
+});

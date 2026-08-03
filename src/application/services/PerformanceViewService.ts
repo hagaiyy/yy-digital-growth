@@ -11,6 +11,7 @@ import {
   type TimeframeKey,
 } from "@/application/performance/timeframeSnapshotSelection";
 import { tabLabel, tabSortKey } from "@/application/performance/labels";
+import { contentTypesInGroup, tabGroupFor } from "@/application/performance/storyGrouping";
 
 export interface PerformanceTabSummary {
   platform: Platform;
@@ -40,6 +41,12 @@ export interface TableTimeframeCell {
 
 export interface TableRow {
   importedContentId: string;
+  // The row's own real content type — distinct from the tab's group
+  // key. Every row in an ordinary tab shares this with the tab itself;
+  // rows in the "Instagram — Stories" tab can each be "imageStory" or
+  // "videoStory" (or the legacy "unknownStory"/"story"), which is why
+  // this is carried per row rather than assumed from the tab.
+  contentType: ContentType;
   thumbnailUrl: string | null;
   caption: string | null;
   title: string | null;
@@ -102,10 +109,13 @@ export class PerformanceViewService {
     const items = await this.deps.importedContentRepository.list();
     const counts = new Map<string, { platform: Platform; contentType: ContentType; count: number }>();
     for (const item of items) {
-      const key = `${item.platform}:${item.contentType}`;
+      // Image and video Stories collapse to one "story" tab group —
+      // every other content type is its own group.
+      const group = tabGroupFor(item.contentType);
+      const key = `${item.platform}:${group}`;
       const existing = counts.get(key);
       if (existing) existing.count += 1;
-      else counts.set(key, { platform: item.platform, contentType: item.contentType, count: 1 });
+      else counts.set(key, { platform: item.platform, contentType: group, count: 1 });
     }
     return [...counts.values()]
       .map(({ platform, contentType, count }) => ({
@@ -121,25 +131,45 @@ export class PerformanceViewService {
       });
   }
 
-  async getTable(platform: Platform, contentType: ContentType): Promise<PerformanceTableData> {
-    const relevantMetrics = getRelevantMetricsForContentType(platform, contentType);
+  // `group` is a tab identity (e.g. "story"), not necessarily one real
+  // content type — contentTypesInGroup expands it to every real
+  // ContentType the tab actually contains. Each row still uses ONLY its
+  // own real content type's relevant-metric list when building cells,
+  // so an image Story row is never filled in with video Story evidence
+  // (or vice versa) — the union below exists solely to give the tab's
+  // hide/show toolbar the full set of metrics either sub-type can show.
+  async getTable(platform: Platform, group: ContentType): Promise<PerformanceTableData> {
+    const constituentTypes = contentTypesInGroup(group);
+
+    const unionByInternalMetric = new Map<string, RelevantMetric>();
+    for (const contentType of constituentTypes) {
+      for (const metric of getRelevantMetricsForContentType(platform, contentType)) {
+        if (!unionByInternalMetric.has(metric.internalMetric)) {
+          unionByInternalMetric.set(metric.internalMetric, metric);
+        }
+      }
+    }
+    const relevantMetrics = [...unionByInternalMetric.values()];
+
     const items = (await this.deps.importedContentRepository.list()).filter(
-      (item) => item.platform === platform && item.contentType === contentType,
+      (item) => item.platform === platform && constituentTypes.includes(item.contentType),
     );
 
     const rows = await Promise.all(
       items.map(async (item): Promise<TableRow> => {
+        const rowRelevantMetrics = getRelevantMetricsForContentType(platform, item.contentType);
         const snapshots = await this.deps.performanceSnapshotRepository.findByImportedContentId(item.importedContentId);
         const selected = selectAllTimeframeSnapshots(snapshots, item.publishedAt);
         const timeframes = {} as Record<TimeframeKey, TableTimeframeCell>;
         for (const key of TIMEFRAME_KEYS) {
           const snapshot = selected[key];
           timeframes[key] = snapshot
-            ? { hasSnapshot: true, collectedAt: snapshot.collectedAt, metrics: buildMetricCells(snapshot, relevantMetrics) }
+            ? { hasSnapshot: true, collectedAt: snapshot.collectedAt, metrics: buildMetricCells(snapshot, rowRelevantMetrics) }
             : { hasSnapshot: false, collectedAt: null, metrics: [] };
         }
         return {
           importedContentId: item.importedContentId,
+          contentType: item.contentType,
           thumbnailUrl: item.thumbnailUrl ?? null,
           caption: item.caption ?? null,
           title: item.title ?? null,

@@ -197,7 +197,7 @@ test("an active Story is merged into the Instagram import alongside recent conte
     env.instagramConnector.activeStories = [
       {
         externalContentId: "story-1",
-        contentType: "story",
+        contentType: "imageStory",
         caption: null,
         permalink: "https://www.instagram.com/stories/fake/story-1",
         thumbnailUrl: "https://instagram.com/story-thumb.jpg",
@@ -210,7 +210,7 @@ test("an active Story is merged into the Instagram import alongside recent conte
     await env.dataImportService.runImport();
 
     const all = await env.importedContentRepository.list();
-    const storyItems = all.filter((c) => c.platform === "instagram" && c.contentType === "story");
+    const storyItems = all.filter((c) => c.platform === "instagram" && c.contentType === "imageStory");
     assert.equal(storyItems.length, 1, "the Story must be imported exactly once, never duplicated on re-import");
     assert.equal(storyItems[0]?.externalContentId, "story-1");
   });

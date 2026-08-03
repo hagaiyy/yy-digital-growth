@@ -229,7 +229,7 @@ test("a genuinely different error on facebook_views (e.g. a real permission prob
   }
 });
 
-test("fetchActiveStories calls the /stories edge and classifies a real IMAGE Story correctly", async () => {
+test("fetchActiveStories calls the /stories edge and classifies a real IMAGE Story as imageStory, not the generic story bucket", async () => {
   const originalFetch = global.fetch;
   let requestedUrl = "";
   global.fetch = (async (input: string | URL) => {
@@ -258,10 +258,37 @@ test("fetchActiveStories calls the /stories edge and classifies a real IMAGE Sto
     assert.ok(requestedUrl.includes("/17841400432393050/stories"), "must call the /stories edge, not /media");
     assert.equal(stories.length, 1);
     assert.equal(stories[0]?.externalContentId, "18121753487497090");
-    assert.equal(stories[0]?.contentType, "story");
+    assert.equal(stories[0]?.contentType, "imageStory");
     assert.equal(stories[0]?.publishedAt, "2026-08-03T18:53:21+0000");
     assert.equal(stories[0]?.platformData.media_type, "IMAGE");
     assert.equal(stories[0]?.platformData.media_product_type, "STORY");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("fetchActiveStories classifies a VIDEO Story as videoStory, never generalized from imageStory's classification", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "18999999999999999",
+            media_type: "VIDEO",
+            media_product_type: "STORY",
+            timestamp: "2026-08-04T10:00:00+0000",
+          },
+        ],
+      }),
+      { status: 200 },
+    )) as typeof fetch;
+
+  try {
+    const connector = new InstagramConnector();
+    const stories = await connector.fetchActiveStories("fake-token", "17841400432393050");
+    assert.equal(stories[0]?.contentType, "videoStory");
+    assert.equal(stories[0]?.platformData.media_type, "VIDEO");
   } finally {
     global.fetch = originalFetch;
   }
