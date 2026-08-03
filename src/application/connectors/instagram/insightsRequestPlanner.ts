@@ -40,6 +40,11 @@ const NEVER_REQUEST_STATUSES: ReadonlySet<MetricRecordStatus> = new Set([
   "invalidForContentType",
   "deprecated",
   "accessReviewRequired",
+  // A metric that does not exist for this API model at all (e.g.
+  // Threads-only metrics rejected on Instagram API with Instagram
+  // Login) is exactly as permanent as "deprecated" — re-requesting it
+  // every import would only ever repeat the same rejection.
+  "invalidForApiModel",
 ]);
 
 function hasEveryPermission(required: string[], granted: string[]): boolean {

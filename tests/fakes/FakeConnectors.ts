@@ -113,6 +113,13 @@ export class FakeInstagramConnector {
     return this.metricsOutcomeFor(externalContentId);
   }
 
+  activeStories: RecentContentItem[] | ConnectorError = [];
+
+  async fetchActiveStories(_accessToken: string, _accountId: string): Promise<RecentContentItem[]> {
+    if (this.activeStories instanceof ConnectorError) throw this.activeStories;
+    return this.activeStories;
+  }
+
   async fetchAccountInsights(
     _accessToken: string,
     _accountId: string,

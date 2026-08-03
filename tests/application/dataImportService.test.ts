@@ -37,7 +37,7 @@ function withEncryptionKey<T>(fn: () => T): T {
   }
 }
 
-function buildEnvironment(nowValues?: string[]) {
+function buildEnvironment(nowValues?: string[] | (() => string)) {
   const connectionRepository = new InMemoryPlatformConnectionRepository();
   const credentialRepository = new InMemoryPlatformCredentialRepository();
   const instagramConnector = new FakeInstagramConnector();
@@ -59,9 +59,12 @@ function buildEnvironment(nowValues?: string[]) {
   const settingsRepository = new InMemoryDataImportSettingsRepository();
 
   let nowIndex = 0;
-  const now = nowValues
-    ? () => nowValues[Math.min(nowIndex++, nowValues.length - 1)]!
-    : () => new Date().toISOString();
+  const now =
+    typeof nowValues === "function"
+      ? nowValues
+      : nowValues
+        ? () => nowValues[Math.min(nowIndex++, nowValues.length - 1)]!
+        : () => new Date().toISOString();
 
   const dataImportService = new DataImportService({
     connectionService,
@@ -187,6 +190,44 @@ test("repeated imports upsert the same importedContent record instead of duplica
   });
 });
 
+test("an active Story is merged into the Instagram import alongside recent content, and never duplicated on re-import", async () => {
+  await withEncryptionKey(async () => {
+    const env = buildEnvironment();
+    await seedAllConnected(env);
+    env.instagramConnector.activeStories = [
+      {
+        externalContentId: "story-1",
+        contentType: "story",
+        caption: null,
+        permalink: "https://www.instagram.com/stories/fake/story-1",
+        thumbnailUrl: "https://instagram.com/story-thumb.jpg",
+        publishedAt: "2026-08-03T18:53:21Z",
+        platformData: { media_type: "IMAGE", media_product_type: "STORY" },
+      },
+    ];
+
+    await env.dataImportService.runImport();
+    await env.dataImportService.runImport();
+
+    const all = await env.importedContentRepository.list();
+    const storyItems = all.filter((c) => c.platform === "instagram" && c.contentType === "story");
+    assert.equal(storyItems.length, 1, "the Story must be imported exactly once, never duplicated on re-import");
+    assert.equal(storyItems[0]?.externalContentId, "story-1");
+  });
+});
+
+test("an active-Stories fetch failure never blocks the rest of the Instagram import", async () => {
+  await withEncryptionKey(async () => {
+    const env = buildEnvironment();
+    await seedAllConnected(env);
+    env.instagramConnector.activeStories = new ConnectorError("failed", "Instagram rejected the active-Stories request.");
+
+    const result = await env.dataImportService.runImport();
+    const igResult = result.connectionResults.find((r) => r.platform === "instagram");
+    assert.equal(igResult?.status, "success", "the normal recent-content item must still import successfully");
+  });
+});
+
 // Scenarios 7/8: hourly snapshot upsert vs. new snapshot.
 test("importing twice within the same UTC hour updates the same performanceSnapshot", async () => {
   await withEncryptionKey(async () => {
@@ -207,10 +248,18 @@ test("importing in a new UTC hour creates a new performanceSnapshot", async () =
   await withEncryptionKey(async () => {
     const hourOne = "2026-07-29T06:10:00.000Z";
     const hourTwo = "2026-07-29T09:45:00.000Z";
-    const env = buildEnvironment([hourOne, hourOne, hourOne, hourOne, hourTwo, hourTwo, hourTwo, hourTwo]);
+    // A mutable "current" value, not a fixed-length FIFO queue: how
+    // many times now() is called within one runImport() is an
+    // implementation detail (item count × per-item calls, plus
+    // account-insights bookkeeping) — this test only cares that every
+    // call within run 1 sees hourOne and every call within run 2 sees
+    // hourTwo, not the exact count.
+    let currentNow = hourOne;
+    const env = buildEnvironment(() => currentNow);
     await seedAllConnected(env);
 
     await env.dataImportService.runImport();
+    currentNow = hourTwo;
     await env.dataImportService.runImport();
 
     const igContent = (await env.importedContentRepository.list()).find((c) => c.platform === "instagram")!;

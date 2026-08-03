@@ -383,6 +383,20 @@ export class DataImportService {
       return connectionFailureFromError(connection, error);
     }
 
+    // Active Stories never appear in /media (confirmed live — see
+    // InstagramConnector.fetchActiveStories) and must be fetched
+    // separately. A failure here never fails the connection or blocks
+    // the recent-content items already fetched above — Stories are an
+    // addition to the import, not a prerequisite for it.
+    try {
+      const stories = await this.instagramConnector.fetchActiveStories(accessToken, accountId);
+      items = [...items, ...stories];
+    } catch {
+      // Swallowed deliberately — same reasoning as account insights
+      // below: an active-Stories fetch failure must never take down an
+      // otherwise-successful recent-content import.
+    }
+
     const outcomes = await mapWithConcurrency(items, ITEM_CONCURRENCY, (item) =>
       this.importOneItem(connection, item, () =>
         this.instagramConnector.fetchContentMetrics(

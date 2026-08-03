@@ -121,6 +121,17 @@ const LIVE_2026_08_01 = "2026-08-01";
 // the same media IDs). See scripts/diagnose-instagram-metrics.ts for
 // the exact commands; raw evidence is quoted in each entry below.
 const LIVE_2026_08_02 = "2026-08-02";
+// Live-tested against a real IMAGE Story (media_type=IMAGE,
+// media_product_type=STORY) published on the connected account,
+// discovered via GET /{ig-user-id}/stories (confirmed live: this Story
+// never appeared in /media at all — Stories require the separate
+// /stories edge). Every candidate below was requested individually
+// (never combined) against that one real Story. These findings are
+// IMAGE-Story-specific: Meta's current documentation describes no
+// separate video-Story metric family, but per this task's own rule, a
+// VIDEO Story must still be independently tested before assuming
+// identical behavior — see the per-entry safeLimitation notes.
+const LIVE_2026_08_03 = "2026-08-03";
 
 export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
   // ---------------------------------------------------------------
@@ -356,37 +367,85 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
   media({ contentType: "feedVideo", providerMetric: "comments_count", internalMetric: "comments", nativeUnit: "count", status: "untested", endpoint: CONTENT_DISCOVERY_ENDPOINT, lastVerifiedDate: LIVE_2026_08_01, safeLimitation: "No real Instagram feed video has been available to test against yet." }),
 
   // ---------------------------------------------------------------
-  // E. Story — capability map and schema only, per this task's
-  // explicit instruction not to claim live support without a real
-  // Story object. Every candidate is "untested", never "unsupported".
+  // E. Story — live-proven 2026-08-03 against one real IMAGE Story
+  // (see LIVE_2026_08_03 comment above for the exact evidence context).
   // ---------------------------------------------------------------
   ...(
     [
-      ["views", "views", "count"],
-      ["reach", "reach", "count"],
-      ["replies", "replies", "count"],
-      ["shares", "shares", "count"],
-      ["navigation", "navigation", "count"],
+      ["views", "views", 1],
+      ["reach", "reach", 0],
+      ["replies", "replies", 0],
+      ["shares", "shares", 0],
+      ["navigation", "navigation", 0],
+      ["follows", "follows", 0],
+      ["profile_activity", "profileActivity", 0],
+      ["profile_visits", "profileVisits", 0],
+      ["total_interactions", "engagements", 0],
     ] as const
-  ).map(([providerMetric, internalMetric, nativeUnit]) =>
+  ).map(([providerMetric, internalMetric, observedValue]) =>
     media({
       contentType: "story",
       providerMetric,
       internalMetric,
-      nativeUnit,
-      status: "untested",
-      lastVerifiedDate: LIVE_2026_08_01,
-      safeLimitation: "No real Story object has been available to test against yet — this is a documented candidate only.",
+      nativeUnit: "count",
+      status: "supported",
+      lastVerifiedDate: LIVE_2026_08_03,
+      safeLimitation: `Live production response (real IMAGE Story, media ${observedValue === 1 ? "returned a real non-zero value (1)" : "returned a real zero"}, 2026-08-03): confirmed supported. IMAGE-Story-tested only — a VIDEO Story has not been independently tested and must not be assumed identical.`,
     }),
   ),
+  media({
+    contentType: "story",
+    providerMetric: "link_clicks",
+    internalMetric: "linkClicks",
+    nativeUnit: "count",
+    status: "invalidForContentType",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Live production response (real IMAGE Story, 2026-08-03): rejected with \"The metric link_clicks is not available on this endpoint.\" (IGApiException code=100) — a real, recognized metric name, just not valid for Story media. IMAGE-Story-tested only.",
+  }),
+  media({
+    contentType: "story",
+    providerMetric: "total_views",
+    internalMetric: "totalViews",
+    nativeUnit: "count",
+    status: "invalidForContentType",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Live production response (real IMAGE Story, 2026-08-03): rejected with \"The metric total_views is not available on this endpoint.\" (IGApiException code=100), despite current Meta documentation listing total_views as a Story metric — proof that the documented Story metric map is not fully accurate and must not be trusted without a live test. IMAGE-Story-tested only.",
+  }),
+  media({
+    contentType: "story",
+    providerMetric: "impressions",
+    internalMetric: "impressions",
+    nativeUnit: "count",
+    status: "invalidForContentType",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Live production response (real IMAGE Story, 2026-08-03): rejected with \"The Media Insights API does not support the impressions metric for this media product type.\" (IGApiException code=100) — explicit, unambiguous content-type rejection.",
+  }),
+  media({
+    contentType: "story",
+    providerMetric: "reposts",
+    internalMetric: "reposts",
+    nativeUnit: "count",
+    status: "invalidForApiModel",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Live production response (real IMAGE Story, 2026-08-03): rejected with \"Instagram Insights Media API endpoint does not support the metrics: reposts.\" (IGApiException code=100) — this and the enumerated valid-metric list (which includes Threads-only names like quotes/thread_replies) indicate reposts belongs to a different product/API model, not merely a wrong content type.",
+  }),
+  media({
+    contentType: "story",
+    providerMetric: "facebook_views",
+    internalMetric: "facebookViews",
+    nativeUnit: "count",
+    status: "noFacebookDistribution",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Not available through current API",
+  }),
   media({
     contentType: "story",
     providerMetric: "exits",
     internalMetric: "exits",
     nativeUnit: "count",
     status: "deprecated",
-    lastVerifiedDate: LIVE_2026_08_01,
-    safeLimitation: "Not present in current Meta Instagram media-insights documentation (v25.0); the documented 'navigation' metric with a story_navigation_action_type breakdown appears to supersede it. Still untested live — no real Story exists yet.",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Live production response (real IMAGE Story, 2026-08-03): rejected — Meta's own IGApiException code=100 valid-metric-list response does not include 'exits'. Superseded by 'navigation', which is confirmed supported and returns a real value.",
   }),
   media({
     contentType: "story",
@@ -394,8 +453,8 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     internalMetric: "tapsForward",
     nativeUnit: "count",
     status: "deprecated",
-    lastVerifiedDate: LIVE_2026_08_01,
-    safeLimitation: "Not present in current Meta documentation (v25.0); likely superseded by 'navigation' breakdown values. Still untested live.",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Live production response (real IMAGE Story, 2026-08-03): rejected — not in Meta's own enumerated valid-metric list. Superseded by 'navigation'.",
   }),
   media({
     contentType: "story",
@@ -403,8 +462,8 @@ export const INSTAGRAM_METRIC_CAPABILITY_REGISTRY: MetricCapabilityEntry[] = [
     internalMetric: "tapsBack",
     nativeUnit: "count",
     status: "deprecated",
-    lastVerifiedDate: LIVE_2026_08_01,
-    safeLimitation: "Not present in current Meta documentation (v25.0); likely superseded by 'navigation' breakdown values. Still untested live.",
+    lastVerifiedDate: LIVE_2026_08_03,
+    safeLimitation: "Live production response (real IMAGE Story, 2026-08-03): rejected — not in Meta's own enumerated valid-metric list. Superseded by 'navigation'.",
   }),
 
   // ---------------------------------------------------------------

@@ -228,3 +228,53 @@ test("a genuinely different error on facebook_views (e.g. a real permission prob
     global.fetch = originalFetch;
   }
 });
+
+test("fetchActiveStories calls the /stories edge and classifies a real IMAGE Story correctly", async () => {
+  const originalFetch = global.fetch;
+  let requestedUrl = "";
+  global.fetch = (async (input: string | URL) => {
+    requestedUrl = typeof input === "string" ? input : input.toString();
+    return new Response(
+      JSON.stringify({
+        data: [
+          {
+            id: "18121753487497090",
+            caption: "test story",
+            media_type: "IMAGE",
+            media_product_type: "STORY",
+            permalink: "https://www.instagram.com/stories/_hagaiyy/3955758664793588683",
+            media_url: "https://scontent.cdninstagram.com/fake.jpg",
+            timestamp: "2026-08-03T18:53:21+0000",
+          },
+        ],
+      }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+
+  try {
+    const connector = new InstagramConnector();
+    const stories = await connector.fetchActiveStories("fake-token", "17841400432393050");
+    assert.ok(requestedUrl.includes("/17841400432393050/stories"), "must call the /stories edge, not /media");
+    assert.equal(stories.length, 1);
+    assert.equal(stories[0]?.externalContentId, "18121753487497090");
+    assert.equal(stories[0]?.contentType, "story");
+    assert.equal(stories[0]?.publishedAt, "2026-08-03T18:53:21+0000");
+    assert.equal(stories[0]?.platformData.media_type, "IMAGE");
+    assert.equal(stories[0]?.platformData.media_product_type, "STORY");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
+test("fetchActiveStories returns an empty list when the account has no active Story, never throwing", async () => {
+  const originalFetch = global.fetch;
+  global.fetch = (async () => new Response(JSON.stringify({ data: [] }), { status: 200 })) as typeof fetch;
+  try {
+    const connector = new InstagramConnector();
+    const stories = await connector.fetchActiveStories("fake-token", "17841400432393050");
+    assert.deepEqual(stories, []);
+  } finally {
+    global.fetch = originalFetch;
+  }
+});

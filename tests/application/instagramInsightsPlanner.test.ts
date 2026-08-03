@@ -56,15 +56,31 @@ test("a content type never sends the same metric list as another content type", 
   assert.notDeepEqual(reelMetrics, carouselMetrics);
 });
 
-test("story plan excludes nothing outright except explicitly deprecated legacy metrics, and everything is untested", () => {
+test("story plan requests every live-confirmed metric and excludes only proven-invalid/deprecated ones", () => {
   const plan = planInstagramMediaInsightsRequest({
     accountType: "creator",
     contentType: "story",
     grantedPermissions: GRANTED,
   });
-  assert.ok(plan.metricsToRequest.every((m) => m.status === "untested"));
-  const excludedReasons = plan.excludedMetrics.map((m) => m.reason);
-  assert.ok(excludedReasons.every((reason) => reason === "deprecated"));
+  // Live-proven 2026-08-03 against a real IMAGE Story — see
+  // metricCapabilityRegistry.ts's Story section.
+  const requested = plan.metricsToRequest.map((m) => m.providerMetric);
+  assert.ok(requested.includes("views"));
+  assert.ok(requested.includes("navigation"));
+  assert.ok(requested.includes("follows"));
+  // facebook_views stays in the live-request path (re-verified every
+  // import, not a permanent exclusion) even though this Story had no
+  // Facebook distribution.
+  assert.ok(requested.includes("facebook_views"));
+
+  const excluded = plan.excludedMetrics.map((m) => m.providerMetric);
+  assert.ok(excluded.includes("exits"), "exits is confirmed deprecated, superseded by navigation");
+  assert.ok(excluded.includes("taps_forward"));
+  assert.ok(excluded.includes("taps_back"));
+  assert.ok(excluded.includes("link_clicks"), "link_clicks is confirmed invalidForContentType for Story");
+  assert.ok(excluded.includes("total_views"));
+  assert.ok(excluded.includes("impressions"));
+  assert.ok(excluded.includes("reposts"), "reposts is confirmed invalidForApiModel and must never be re-requested");
 });
 
 test("missing a required permission excludes every candidate with reason permissionRequired", () => {

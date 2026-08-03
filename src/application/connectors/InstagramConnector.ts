@@ -497,6 +497,53 @@ export class InstagramConnector implements PlatformConnector {
     });
   }
 
+  // Stories are never returned by /media (confirmed live, 2026-08-03 —
+  // the /media edge's response never includes a currently-active Story,
+  // only feed/Reel/carousel content) — Instagram API with Instagram
+  // Login exposes active Stories through the separate /{ig-user-id}/stories
+  // edge instead. A Story vanishes from this edge (and from direct
+  // lookup) roughly 24 hours after publish; there is no explicit
+  // expiration field in the response — its absence here is itself the
+  // observed behavior, not an assumption from documentation.
+  async fetchActiveStories(accessToken: string, accountId: string): Promise<RecentContentItem[]> {
+    const url = new URL(`${GRAPH_API_BASE}/${accountId}/stories`);
+    url.searchParams.set(
+      "fields",
+      "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp",
+    );
+    url.searchParams.set("access_token", accessToken);
+
+    let response: Response;
+    try {
+      response = await fetch(url, { method: "GET" });
+    } catch {
+      throw new ConnectorError("failed", "Instagram could not be reached to retrieve active Stories.");
+    }
+    if (!response.ok) {
+      throw new ConnectorError("failed", "Instagram rejected the active-Stories request.");
+    }
+
+    let body: { data?: InstagramMediaNode[] };
+    try {
+      body = (await response.json()) as typeof body;
+    } catch {
+      throw new ConnectorError("failed", "Instagram returned an unexpected response.");
+    }
+
+    return (body.data ?? []).map((node) => ({
+      externalContentId: node.id,
+      contentType: mapInstagramContentType(node.media_type, node.media_product_type),
+      caption: node.caption ?? null,
+      permalink: node.permalink ?? null,
+      thumbnailUrl: node.thumbnail_url ?? node.media_url ?? null,
+      publishedAt: node.timestamp ?? null,
+      platformData: {
+        media_type: node.media_type,
+        media_product_type: node.media_product_type,
+      },
+    }));
+  }
+
   // Every metric this connector requests for a piece of content is
   // decided by planInstagramMediaInsightsRequest against the metric
   // capability registry — never one universal list applied to every
